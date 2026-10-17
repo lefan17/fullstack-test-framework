@@ -62,19 +62,37 @@ class _Report:
 
 
 @pytest.fixture(autouse=True)
-def _clean_state() -> Any:
-    """每个用例前后都把插件的全局状态还原，不只是清空。
+def _clean_state(request: pytest.FixtureRequest) -> Any:
+    """每个用例前后都把插件的全局状态还原，并且**不吞掉本用例自己的失败**。
 
-    这里**不能**只清空：``qaplat gate`` 用 ``-p qaplat._dump`` 真实加载这个插件，
-    于是本文件的每一条用例都会经过真钩子。只清空不还原的后果是 ``_finish()`` 把
-    ``_STATE["dump"]`` 指向 tmp_path 之后就永久丢了外层那次门禁的落盘路径——实测
-    ``pr.json`` 根本不生成，门禁退化成汇总行兜底，且本文件 12 条用例连环全红。
+    这里有三件事必须同时做到，少一件就会造出一条假绿通道：
+
+    1. **必须还原，不能只清空。** ``qaplat gate`` 用 ``-p qaplat._dump`` 真实加载这个
+       插件，本文件的每一条用例都会经过真钩子。只清空不还原时，``_finish()`` 把
+       ``_STATE["dump"]`` 指向 tmp_path 之后就永久丢了外层那次门禁的落盘路径——实测
+       ``pr.json`` 根本不生成，门禁退化成汇总行兜底。
+    2. **还原时要留下本用例那条非通过记录。** 本 fixture 的 finalizer 在 teardown 的
+       logreport **之前**运行，还原会连「当前这条用例刚刚被判失败」的那条记录一起清掉；
+       随后真钩子处理 teardown 报告时用 ``setdefault`` 重新建一条默认 ``passed`` 的
+       entry（``_dump.py`` 的 teardown 分支只在「已是 passed 且 teardown 也失败」时改
+       ``error``，teardown 正常就什么都不做），于是 call 阶段的 ``failed`` 被永久覆盖。
+       实测探针：某条用例被强制判失败后 pytest 侧 ``1 failed``、退出码 1，而落盘 dump 里
+       它记成 ``passed``、门禁 ``EXIT=0``「门禁达标」。**守卫用例自己坏了却给绿灯，
+       比原本那条「全红」更糟。**
+    3. **只留非通过的**，通过的记录照旧丢弃。留着通过的记录会让 ``test_sessionfinish_*``
+       里断言「落盘 cases 只有 1 条」这类用例数错。
     """
+    nodeid = request.node.nodeid
     saved = {key: (value.copy() if isinstance(value, dict) else value) for key, value in _dump._STATE.items()}
     _dump._STATE.update({"dump": None, "records": {}, "markers": {}, "files": {}, "covers": {}})
     yield
+    # 走到这里时真钩子已经处理完 setup 与 call 两个报告，records 里就是本用例的真实结论。
+    live = _dump._STATE["records"].get(nodeid)
+    own = live if isinstance(live, dict) and live.get("outcome") != "passed" else None
     _dump._STATE.clear()
     _dump._STATE.update(saved)
+    if own is not None:
+        _dump._STATE["records"][nodeid] = own
 
 
 def _outcome_of(*reports: _Report) -> str:

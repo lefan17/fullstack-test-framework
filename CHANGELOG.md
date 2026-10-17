@@ -841,6 +841,51 @@ mypy 114 → **115 source files**）、`CONTRIBUTING.md`（默认档 520 → **5
 `-m platform` 全绿恰恰是「没用门禁那个跑法跑」的结果。测插件的东西必须
 在插件真的被加载时也成立。
 
+### 修复 —— 两条 pytest 采集通道不再被临时根目录的建删噪声打崩（本轮）
+
+`qaplat/registry.py` 的 `collect_cases()` 与 `qaplat/gate.py` 的 `run_layer()` 都会起一个
+`python -m pytest` 子进程，并把调用方给的路径参数**原样透传**。当那个路径落在仓库之外
+（`--` 透传、或 `tmp_path` 下的探针文件）时，pytest 会把它的每一级祖先都塞进待枚举列表
+（`_pytest/main.py:908-916`：`paths = [argpath]` 之后沿 `argpath.parents` 逐级 `insert(0, ...)`）。
+而 Windows 的临时根目录常年被各种进程反复建删，`_pytest/main.py:975-982` 的
+`os.path.samestat(p1.lstat(), p2.lstat())` 就会撞上已经消失的目录：
+`FileNotFoundError: [WinError 2]` → 收集期崩 → 退出码 2、零个 nodeid。
+
+**症状是偶发的，而且只在压力下出现**：单跑 `test_dump_plugin.py` 的端到端用例 40 轮命中 2 次，
+`-m "smoke or api or platform"` 全量 5 轮全绿。失败当场抓到的子进程输出是
+`FileNotFoundError ... 'qaplat-collect-<随机>'` + `dump: {"exitstatus": 2, "cases": []}`。
+
+**归因靠的是反证，不是猜测**：把 80 轮复现脚本的 `$env:TMP` 从共用的工作区临时目录换成
+一个私有的空目录后，同样的 80 轮 **0 次命中**（原先是 7/80）；再加 8 线程无休地
+`mkdtemp` + `rmtree` 造删约 31 万个目录，未修版本 **4/4 全红**、修好的版本 **4/4 全绿**。
+所以它不是权限问题、不是产品逻辑错，也不是用例写法错——是被采集目标落在了别人正在铲的土上。
+
+**修法**：`qaplat/paths.py` 新增 `confcutdir_args(args)`，把「首个真实存在、且落在仓库之外的
+路径参数」的父目录交给 `--confcutdir`。pytest 的 `_is_in_confcutdir`（`_pytest/config/__init__.py:617-630`）
+会在此处**截断祖先链**，临时根目录从此不再被枚举——所以这个修法不依赖噪声来自哪个进程。
+三条边界写在函数里：仓库内的目标**一律不补**（祖先链只到仓库根，补了等于改 nodeid 解析规则，是纯风险）、
+调用方自己传了 `--confcutdir` 就**让位**、只认真实存在的路径（选项与写错的路径原样跳过）。
+之后 `build_pytest_args()` 与 `collect_cases()` 各接一行。
+
+**已否决的三个替代方案**（都实测过）：把 dump 临时目录搬出临时根——只治自家那份噪声，
+被外部噪声打时照样红（40/48 ↔ 42/48）；`--rootdir`——会改 nodeid 形状，直接打红既有的
+`endswith(...)` 断言；`--continue-on-collection-errors`——10 轮还有 2 轮坏。
+
+**可证伪**：新增 `testcases/platform/test_registry_coverage.py` 里 4 条用例，其中
+`test_collect_cases_survives_a_churning_temp_root` 真开 4 个线程对着同一个根反复建删目录。
+开着修法跑 8 轮全绿，用 `-p nocut`（把 `confcutdir_args` 换成恒 `[]`）跑 5 轮全红。
+
+**同时同步的数字**（新增 4 条用例后全仓从 571 涨到 **575** 条；平台层 171 → **175**）：
+`README.md`（收集数、各 `-m` 的 `deselected`、覆盖率两行与它的免责段、无编号 nodeid 544 → **548**）、
+`CONTRIBUTING.md`（默认档 537 → **541** 收集、`-m "not ui"` 期望 526 → **530** passed）、
+`.github/PULL_REQUEST_TEMPLATE.md`（171 → **175**）、`.github/workflows/test.yml`（平台层注释
+171 → **175**、覆盖率注释与 step summary 的 56.56%-56.58% → **56.20%**）、
+`docs/质量门禁策略.md`（571 → **575**、171 → **175**）、`docs/platform-usage.md`、
+`docs/platform-metrics-report.md`（只改指向句，快照数字不动）、`docs/wave3-gate-policy-handoff.md`。
+
+覆盖率两栏随代码一起动了：`not ui` → `TOTAL 8425 1154-1157 86%`，`api` → `TOTAL 8246 3612 56%（56.20%）`。
+分母涨 65 条是因为 `qaplat/paths.py` 多了 `confcutdir_args()`，而它只被平台层与端到端用例走到，
+所以 `-m api` 那一栏未覆盖数从 3552 涨到 3612、百分比从 56.56% 落到 56.20%——这是真下降，不是抖动。
 ---
 
 ## 2026-10-13

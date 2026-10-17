@@ -334,3 +334,81 @@ def test_collect_cases_returns_empty_only_for_the_zero_collection_exit_code(tmp_
 
     cases = registry.collect_cases(["testcases/platform/test_gate_layers.py", "--collect-only"])
     assert cases, "非空目标必须真收到用例——否则「一律 raise」也能让上面那条断言通过"
+
+
+def test_confcutdir_only_added_for_targets_outside_the_repo(tmp_path) -> None:
+    """采仓外目标才补 ``--confcutdir``；仓内目标一条都不许多。
+
+    pytest 收集一个参数路径时会把**每一级祖先目录**都放进枚举列表，只有
+    ``--confcutdir`` 能截断这条链。目标落在临时根下、而那个根又被并行进程
+    反复建删时，枚举到一半目录就消失，收集期以退出码 2 崩掉、零 nodeid。
+    仓内目标的祖先链只到仓库根，多补一条只会改变 nodeid 的解析规则。
+    """
+    assert registry.confcutdir_args(["testcases/platform/test_gate_layers.py"]) == []
+
+    outside_file = tmp_path / "probe.py"
+    outside_file.write_text("def test_a():\n    assert True\n", encoding="utf-8")
+    assert registry.confcutdir_args([str(outside_file)]) == [f"--confcutdir={tmp_path}"]
+
+    # 目标目录同样看它的父目录：截断点落在「目标之外」，目标自己仍要被枚举。
+    assert registry.confcutdir_args([str(tmp_path)]) == [f"--confcutdir={tmp_path.parent}"]
+
+
+def test_confcutdir_steps_aside_when_the_caller_already_passed_one(tmp_path) -> None:
+    """调用方自己给了 ``--confcutdir`` 就让位，别追加第二条（pytest 只认最后一条）。"""
+    outside_file = tmp_path / "probe.py"
+    outside_file.write_text("def test_a():\n    assert True\n", encoding="utf-8")
+    assert registry.confcutdir_args([f"--confcutdir={tmp_path}", str(outside_file)]) == []
+    assert registry.confcutdir_args(["--confcutdir", str(tmp_path), str(outside_file)]) == []
+
+
+def test_confcutdir_ignores_options_and_missing_paths() -> None:
+    """非路径项与不存在的路径都不能当判据，否则会把 ``-k`` 的值当成目标。"""
+    assert registry.confcutdir_args([]) == []
+    assert registry.confcutdir_args(["-k", "smoke", "-m", "platform"]) == []
+    assert registry.confcutdir_args([str(registry.ROOT / "no-such-dir" / "x.py")]) == []
+
+
+def test_collect_cases_survives_a_churning_temp_root(tmp_path) -> None:
+    """目标在临时根下、且那个根被反复建删时，采集通道仍必须拿到用例。
+
+    这条直接复现缺陷：不补 ``--confcutdir`` 时 pytest 会把 ``tmp_path`` 到盘符根
+    的每一级祖先都扫一遍，并发进程在同一个根上建删目录就足以让
+    ``os.path.samestat`` 撞上已消失的目录（``FileNotFoundError``），子进程以
+    退出码 2 结束、零 nodeid —— 与「仓库里没有用例」在报表上同形。
+    """
+    import shutil
+    import tempfile
+    import threading
+
+    # 目标放一层「稳定」子目录，churn 打在它外面：这正是真套件的形状——
+    # 目标在 pytest-N/test_xxx0/ 里，被反复建删的是它上面那层临时根。
+    churned = tmp_path / "churn"
+    churned.mkdir()
+    stable = churned / "stable"
+    stable.mkdir()
+    target = stable / "probe.py"
+    target.write_text("def test_probe_a():\n    assert True\n", encoding="utf-8")
+
+    stop = threading.Event()
+
+    def _churn() -> None:
+        while not stop.is_set():
+            try:
+                shutil.rmtree(tempfile.mkdtemp(prefix="churn-", dir=str(churned)), ignore_errors=True)
+            except OSError:
+                pass
+
+    threads = [threading.Thread(target=_churn, daemon=True) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    try:
+        cases = registry.collect_cases([str(target), "--collect-only", "-p", "no:cacheprovider"])
+    finally:
+        stop.set()
+        for thread in threads:
+            thread.join(timeout=5)
+
+    # nodeid 以 rootdir（仓库根）为基准显示，仓外目标也一样，所以按尾巴比对。
+    assert len(cases) == 1
+    assert cases[0].node_id.endswith("::test_probe_a"), cases[0].node_id

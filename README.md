@@ -409,7 +409,7 @@ pytest --html=report.html --self-contained-html
 | 契约-自动导出 | 224 | 从 FastAPI 自动导出 `docs/openapi.json`（29 operation）并做漂移门禁；schemathesis 属性测试按 spec 生成请求 + 手写契约与自动导出的逐条对照。扫出 6 类真实契约缺陷：DEF-05/06 已修并由正常用例固化，DEF-01~04 共 11 条 `xfail(strict=True)` 钉住 |
 | 契约-登录 | 29 | 用 5 种设计方法推出的 30 条用例（等价类/边界值/判定表/场景法/错误推测），钉住被测服务当前行为并标注 6 个已知缺陷（FIND-01~06） |
 | UI-Demo Web / 混合链路 | 20 | 本地 Demo Web 的页面与接口断言 15 条（`test_mes_web_app.py`，不起浏览器）+ 页面操作与接口校验的混合链路 5 条（`test_mes_mixed_flow.py`，用浏览器） |
-| 平台层（qaplat 自测） | 171 | 门禁分层表达式、度量库、覆盖矩阵 registry、报表 CLI、采集插件分类等平台自身的用例（`testcases/platform/`） |
+| 平台层（qaplat 自测） | 175 | 门禁分层表达式、度量库、覆盖矩阵 registry、报表 CLI、采集插件分类等平台自身的用例（`testcases/platform/`） |
 | 数据隔离 | 会话级 1 项 | 会话结束时各表行数与关键数值列合计（库存可用/占用/已发料、流水数量与账面余额）必须回到基线，且流水余额链逐笔自洽（见下方"数据隔离"一节） |
 
 业务全链路那些用例**不依赖公网**：`testcases/mes/` 的 session 级 fixture 会自己
@@ -518,7 +518,7 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 | 已登记为用例编号的前缀 | `LC`（30 个编号 / 17 个函数 / 27 个 nodeid） |
 | 一条 nodeid 承载多个编号 | `test_lc22_to_lc25_decision_table` → LC-22、LC-23、LC-24、LC-25 |
 | 未解析（抽到编号却找不到 nodeid） | 0 |
-| 无编号 nodeid（装全依赖 + 两条线全部合入） | **544**：contract 224、platform **171**、mes 64、api 49、ui 34、login 2 |
+| 无编号 nodeid（装全依赖 + 两条线全部合入） | **548**：contract 224、platform **175**、mes 64、api 49、ui 34、login 2 |
 
 > **无编号那一行的数字随收集范围变，写死会过期——三组数字都对，差的是"跑在哪个树"。**
 > 同一台机器上：依赖没装齐时（`test_schemathesis_properties.py` 收集报
@@ -534,7 +534,9 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 > 其后又给 `collect_cases` 补 2 条采集失败判据自测，是 **507** 条收集 / **480** 条无编号；
 > 再往后合入 CI 加固（`windows` job 与 `gate --layer pr` 的真跑用例）后是 **554** 条收集 / **527** 条无编号；
 > 最后给 `qaplat/_dump.py` 的采集分类分支补 17 条自测（新增 `test_dump_plugin.py`，一个分支一个用例）后是
-> **571** 条收集 / **544** 条无编号（contract 224、platform **171**、mes 64、api 49、ui 34、login 2）
+> **571** 条收集 / **544** 条无编号（contract 224、platform **171**、mes 64、api 49、ui 34、login 2）；
+> 再给两条 pytest 采集通道补 4 条 `--confcutdir` 自测（含一条真开 4 线程反复建删临时目录的用例）后是
+> **575** 条收集 / **548** 条无编号（contract 224、platform **175**、mes 64、api 49、ui 34、login 2）
 > ——上表那一行就是最后这组。**脚本的原始输出才是权威**：
 > README 只钉"有编号的 30 / 27"这一组，它与装了哪些依赖、树里有哪些文件都无关，不会漂。
 > 复现：`python scripts/case_index.py`（它自己调 `python -m pytest --collect-only` 取 nodeid；
@@ -675,22 +677,22 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 > **一个容易看错的点**：`api` 与 `mes`、`login` 三个标记有**重叠** ——
 > `testcases/mes/` 的用例同时打了 `mes` 和 `api`，`testcases/login/` 的同时打了
 > `login` 和 `api`。所以 `-m api` 选到 132 条（49 条接口目录 + 54 条 MES + 29 条登录），
-> **这些数字不能相加**。全量共 571 条 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 171 平台层自测。
+> **这些数字不能相加**。全量共 575 条 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 175 平台层自测。
 > 另有 2 条性能基线用例（`-m perf`）挂在接口目录里，`-m 'api and not perf'` 是 130 条。
 > 契约那 224 条是**独立标记**（`-m contract`），不并入 `api` ——
 > 它们要起本地服务、按 spec 生成请求，属于另一档耗时（约 20 秒），
 > 不适合塞进"日常开发随手跑"的那一组。
 
 ```text
-pytest --collect-only -q                 571 tests collected
+pytest --collect-only -q                 575 tests collected
 
-pytest -m api                            132 passed, 439 deselected in 75.55–79.11s
-pytest -m mes                             64 passed, 507 deselected in 37.43s
-pytest -m login                           29 passed, 542 deselected in  3.38s
-pytest -m contract                       213 passed, 347 deselected, 11 xfailed in 19.42s
-pytest -m perf                             2 passed, 569 deselected in  5.43s
-pytest -m platform                       171 passed, 400 deselected in 23.68s
-pytest -m ui                             34 passed, 537 deselected in 41.21–41.57s（收集 34 条；浏览器已装好，全绿，见下）
+pytest -m api                            132 passed, 443 deselected in 75.55–79.11s
+pytest -m mes                             64 passed, 511 deselected in 37.43s
+pytest -m login                           29 passed, 546 deselected in  3.38s
+pytest -m contract                       213 passed, 351 deselected, 11 xfailed in 19.42s
+pytest -m perf                             2 passed, 573 deselected in  5.43s
+pytest -m platform                       175 passed, 400 deselected in 23.42s
+pytest -m ui                             34 passed, 541 deselected in 41.21–41.57s（收集 34 条；浏览器已装好，全绿，见下）
 
 cd traffic-replay; pytest                173 passed in 15.93s（批次 2，自带 pytest.ini）
 
@@ -699,8 +701,8 @@ pytest -m mes -n 4 --dist loadfile        64 passed in 24.24s
 CONTRACT_MAX_EXAMPLES=50 pytest -m contract
                                          213 passed, 11 xfailed in 49.24s  # 放大 6.25 倍样例，耗时 ×2.5
 
-pytest -m "not ui" -n 4 --cov=. --cov-report=term          TOTAL 8360 1152–1158 86%
-pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8181 3552–3554 57%（56.56%–56.58%）
+pytest -m "not ui" -n 4 --cov=. --cov-report=term          TOTAL 8425 1154–1157 86%
+pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8246 3612 56%（56.20%）
                                         Required test coverage of 54% reached（退出码 0）
 pytest -m mes --cov=mock_server --cov-report=term          TOTAL 1374 235 83%
 pytest -m login --cov=login_app --cov-report=term          TOTAL   88  13 85%
@@ -722,13 +724,13 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > **marker 真的重叠，别做加法**：`-m api` 的 132 条 = `api and mes` 54 条 + `api and login` 29 条
 > + 只属接口目录的 49 条（`-m perf` 的 2 条就在这 49 条里）；另有 `mes and not api` 10 条。
 > 所以 132 = 49 + 54 + 29 这个加法成立，但 "49 + 54 + 29" 里的 54、29 已经分别被 `-m mes`、`-m login` 数过一遍。
-> 全量 571 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 171 平台层自测（这六组互不重叠，加法成立）。
+> 全量 575 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 175 平台层自测（这六组互不重叠，加法成立）。
 > **覆盖率两行同一个道理**：`--cov=.` 的分母里含 `qaplat/` 与 `mes_web/` 整目录，
-> 所以 `not ui` 是 8360 分母 / 未覆盖 1152–1158 / **86%**（串行两次 1158 / 1157，带 `-n 4` 一次 1152），
-> 而只跑 `-m api` 的分母是 8181 / 未覆盖 3552–3554 / **57%（56.56%–56.58%）**。
+> 所以 `not ui` 是 8425 分母 / 未覆盖 1154–1157 / **86%**（串行两次 1157 / 1154），
+> 而只跑 `-m api` 的分母是 8246 / 未覆盖 3612 / **56%（56.20%）**。
 > 两组的分母差 179 条，差的正是 `-m api` 摸不到的那些文件——所以两个百分比不可比，
-> 门禁挂在 `-m api` 上只能拿 57% 这一栏说事。
-> 这一栏在 3552–3554 这一档：`-m api` 不 import `testcases/` 里的平台层用例，分母比 `not ui` 少 179 条，
+> 门禁挂在 `-m api` 上只能拿 56% 这一栏说事。
+> 这一栏在 3612 这一档：`-m api` 不 import `testcases/` 里的平台层用例，分母比 `not ui` 少 179 条，
 > 但那 179 条里有相当一部分是被 `-m api` 覆盖不到的模块，所以未覆盖行数反而更多。
 > `not ui` 那一栏仍按两点写区间：串行两次差 1 行，属于运行间抖动（同一份代码、同一台机器也会变）。
 > 所以这里写区间，不写某一个"精确值"。
@@ -736,8 +738,8 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 且它的 `analyze/` `recorder/` `replay/` 都没有 `__init__.py`（靠 `conftest.py` 插 `sys.path` 导入）。
 
 > **`-m ui` 那一行是本次真的重跑过的**：命令是 `pytest -m ui -o addopts=`，
-> 结果是 `34 passed, 537 deselected in 41.21–41.57s`，退出码 0。收集数 34 条
-> （`pytest -m ui --collect-only -q -o addopts=` → `34/571 tests collected`）。
+> 结果是 `34 passed, 541 deselected in 41.21–41.57s`，退出码 0。收集数 34 条
+> （`pytest -m ui --collect-only -q -o addopts=` → `34/575 tests collected`）。
 > 这 34 条里，15 条（`testcases/ui/test_mes_web_app.py`）走 HTTP 层、**不申请 `page`
 > fixture、不起浏览器**；另外 19 条（`test_inventory.py` 8 条 / `test_login.py` 6 条 /
 > `test_mes_mixed_flow.py` 5 条）需要真实浏览器，打的是公共 demo 站
@@ -751,13 +753,15 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 早期本文件把同一批 error 归因成"沙箱禁止 asyncio 建命名管道（`_winapi.CreateNamedPipe`）"，
 > 那个归因不成立：那 19 条 error 逐条都能用"缺浏览器"复现，没有一条是那个原因。
 >
-> **覆盖率门禁挂在 `-m api` 上，而它现在有 56.6%，不是"全量"的 86%**：
+> **覆盖率门禁挂在 `-m api` 上，而它现在有 56.2%，不是"全量"的 86%**：
 > 这两组的选取集**不再相同**（改造前它们恰好都是 92 条，所以旧文档里
 > "选取集完全相同"那句当时是对的，现在错了）。
-> 门禁定在 54：它要拦的是**退化**，不是卡住当前值（当前 56.56%–56.58%，留约 2.6pp 余量）。
+> 门禁定在 54：它要拦的是**退化**，不是卡住当前值（当前 56.20%，留约 2.2pp 余量）。
 >
-> **当前值（2026-10-17，`f8116c1` 这棵树）**：`not ui` 分母 8360、未覆盖 1152–1158、**86%**；
-> `api` 分母 8181、未覆盖 3552–3554、**57%（56.56%–56.58%）**。
+> **当前值（2026-10-17，`--confcutdir` 这一棵树）**：`not ui` 分母 8425、未覆盖 1154–1157、**86%**；
+> `api` 分母 8246、未覆盖 3612、**56%（56.20%）**。分母从 8360 涨到 8425 是因为 `qaplat/paths.py`
+> 新增了 `confcutdir_args()` 与两条采集通道的调用点——这些行只被平台层用例和端到端用例走到，
+> 所以 `-m api` 那一栏的未覆盖数同步从 3552 涨到 3612，百分比从 56.56% 掉到 56.20%。
 >
 > **以下为历史记录，分母已作废。** 它记的是"当时在某棵树上串行测了几次"，
 > 把里面的分母与未覆盖数换成新值就等于伪造记录，所以下面的数字原样保留，只作溯源用：

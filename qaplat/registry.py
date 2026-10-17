@@ -27,7 +27,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from qaplat.paths import CACHE_DIR, DEFAULT_SPEC_PATH, ROOT
+from qaplat.paths import CACHE_DIR, DEFAULT_SPEC_PATH, ROOT, confcutdir_args
 
 #: 源码路径字符串的提取范围：以 ``/api`` 开头的字面量。
 _PATH_LITERAL_RE = re.compile(r"(?<![\w.])(/api[A-Za-z0-9_\-./{}]*)")
@@ -232,6 +232,10 @@ def collect_cases(pytest_args: Sequence[str] = ()) -> list[CaseInfo]:
             "--qaplat-dump",
             str(dump_path),
             *[str(item) for item in pytest_args],
+            # 调用方可以把目标指到仓库外（临时目录里的探针用例就是这么跑的）。
+            # 那种目标要截断祖先枚举：仓库外路径的祖先链会一路排到盘符根，
+            # 中间任何一级目录被并行进程删掉，收集期就会以退出码 2 崩掉。
+            *confcutdir_args([str(item) for item in pytest_args]),
         ]
         # 与 gate.run_layer 同样的理由：管道里的子进程默认按 cp936 输出，这里按 utf-8 解码，
         # 中文用例名会变成替换字符（nodeid 本身是 ASCII 所以不一定立刻暴露）。

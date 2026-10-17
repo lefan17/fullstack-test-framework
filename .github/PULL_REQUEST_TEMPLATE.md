@@ -18,7 +18,7 @@
   python -m pytest -o addopts= -q -m "not ui" -p no:warnings   # 期望 526 passed, 34 deselected, 11 xfailed
   python -m pytest -o addopts= -q -m mes                       # 期望 64 passed
   python -m pytest -o addopts= -q -m login                     # 期望 29 passed
-  python -m pytest -q -m platform                              # 期望 171 passed
+  python -m pytest -q -m platform                              # 期望 175 passed
   cd traffic-replay && python -m pytest -q                     # 期望 173 passed（自带 pytest.ini）
   python -m ruff check .            && python -m ruff format --check .
   python -m mypy

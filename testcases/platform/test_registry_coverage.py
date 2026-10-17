@@ -11,7 +11,7 @@ import json
 
 import pytest
 
-from qaplat import registry
+from qaplat import paths, registry
 from qaplat.registry import CaseInfo, OperationCoverage, build_coverage, load_operations
 
 pytestmark = pytest.mark.platform
@@ -344,29 +344,29 @@ def test_confcutdir_only_added_for_targets_outside_the_repo(tmp_path) -> None:
     反复建删时，枚举到一半目录就消失，收集期以退出码 2 崩掉、零 nodeid。
     仓内目标的祖先链只到仓库根，多补一条只会改变 nodeid 的解析规则。
     """
-    assert registry.confcutdir_args(["testcases/platform/test_gate_layers.py"]) == []
+    assert paths.confcutdir_args(["testcases/platform/test_gate_layers.py"]) == []
 
     outside_file = tmp_path / "probe.py"
     outside_file.write_text("def test_a():\n    assert True\n", encoding="utf-8")
-    assert registry.confcutdir_args([str(outside_file)]) == [f"--confcutdir={tmp_path}"]
+    assert paths.confcutdir_args([str(outside_file)]) == [f"--confcutdir={tmp_path}"]
 
     # 目标目录同样看它的父目录：截断点落在「目标之外」，目标自己仍要被枚举。
-    assert registry.confcutdir_args([str(tmp_path)]) == [f"--confcutdir={tmp_path.parent}"]
+    assert paths.confcutdir_args([str(tmp_path)]) == [f"--confcutdir={tmp_path.parent}"]
 
 
 def test_confcutdir_steps_aside_when_the_caller_already_passed_one(tmp_path) -> None:
     """调用方自己给了 ``--confcutdir`` 就让位，别追加第二条（pytest 只认最后一条）。"""
     outside_file = tmp_path / "probe.py"
     outside_file.write_text("def test_a():\n    assert True\n", encoding="utf-8")
-    assert registry.confcutdir_args([f"--confcutdir={tmp_path}", str(outside_file)]) == []
-    assert registry.confcutdir_args(["--confcutdir", str(tmp_path), str(outside_file)]) == []
+    assert paths.confcutdir_args([f"--confcutdir={tmp_path}", str(outside_file)]) == []
+    assert paths.confcutdir_args(["--confcutdir", str(tmp_path), str(outside_file)]) == []
 
 
 def test_confcutdir_ignores_options_and_missing_paths() -> None:
     """非路径项与不存在的路径都不能当判据，否则会把 ``-k`` 的值当成目标。"""
-    assert registry.confcutdir_args([]) == []
-    assert registry.confcutdir_args(["-k", "smoke", "-m", "platform"]) == []
-    assert registry.confcutdir_args([str(registry.ROOT / "no-such-dir" / "x.py")]) == []
+    assert paths.confcutdir_args([]) == []
+    assert paths.confcutdir_args(["-k", "smoke", "-m", "platform"]) == []
+    assert paths.confcutdir_args([str(registry.ROOT / "no-such-dir" / "x.py")]) == []
 
 
 def test_collect_cases_survives_a_churning_temp_root(tmp_path) -> None:
@@ -410,5 +410,44 @@ def test_collect_cases_survives_a_churning_temp_root(tmp_path) -> None:
             thread.join(timeout=5)
 
     # nodeid 以 rootdir（仓库根）为基准显示，仓外目标也一样，所以按尾巴比对。
+    assert len(cases) == 1
+    assert cases[0].node_id.endswith("::test_probe_a"), cases[0].node_id
+
+
+def test_confcutdir_option_is_spliced_before_the_double_dash(tmp_path) -> None:
+    """``--confcutdir`` 必须落在 ``--`` **之前**，否则它自己会变成一个路径参数。
+
+    ``--`` 之后的一切都被 pytest 当成位置参数（要收集的路径）。把选项追加在末尾时，
+    ``qaplat run --layer smoke -- <仓外目标>``（``FROZEN_CLI.md`` 明文规定的透传形状）
+    会让 pytest 报 ``file or directory not found: --confcutdir=...``、退出码 4、零收集。
+    """
+    outside = tmp_path / "probe.py"
+    outside.write_text("def test_a():\n    assert True\n", encoding="utf-8")
+    flag = f"--confcutdir={tmp_path}"
+
+    # 没有 ``--`` 时追加在末尾就是安全的：pytest 允许选项与路径交错。
+    assert registry.with_confcutdir([str(outside)]) == [str(outside), flag]
+    assert registry.with_confcutdir(["--", str(outside)]) == [flag, "--", str(outside)]
+    assert registry.with_confcutdir(["-k", "smoke", "--", str(outside)]) == [
+        "-k",
+        "smoke",
+        flag,
+        "--",
+        str(outside),
+    ]
+    assert registry.with_confcutdir(["testcases/platform/test_gate_layers.py"]) == [
+        "testcases/platform/test_gate_layers.py"
+    ]
+
+
+def test_collect_cases_accepts_double_dash_before_an_outside_target(tmp_path) -> None:
+    """``--`` 透传是契约写法，采集通道必须能吃下它并真的拿到用例。
+
+    这是上一条的端到端对照：``with_confcutdir`` 的落位写错时，单元断言会红；
+    但只有真跑一次子进程才能证明 pytest 也这么理解参数顺序。
+    """
+    target = tmp_path / "probe.py"
+    target.write_text("def test_probe_a():\n    assert True\n", encoding="utf-8")
+    cases = registry.collect_cases(["--", str(target)])
     assert len(cases) == 1
     assert cases[0].node_id.endswith("::test_probe_a"), cases[0].node_id

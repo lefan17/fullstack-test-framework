@@ -28,7 +28,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from qaplat.metrics import RunRecord, pass_rate_of, utc_now
-from qaplat.paths import CACHE_DIR, ROOT, confcutdir_args
+from qaplat.paths import CACHE_DIR, ROOT, with_confcutdir
 
 #: 门禁把每轮原始采集写在这里，供 report / registry 复用同一份数据。
 RAW_DUMP_DIR = CACHE_DIR / "raw"
@@ -144,16 +144,16 @@ def build_pytest_args(spec: LayerSpec, extra: Sequence[str] = ()) -> list[str]:
     空表达式（release 层）不产生 ``-m ""``——pytest 对空 ``-m`` 的语义是把全部用例
     标记成匹配，多写反而容易误解。
 
-    ``--confcutdir`` 由 :func:`qaplat.paths.confcutdir_args` 按需补：层自己跑的是仓库内
+    ``--confcutdir`` 由 :func:`qaplat.paths.with_confcutdir` 按需补：层自己跑的是仓库内
     的 ``testcases``，但 ``extra`` 允许调用方把目标指到仓库外（CLI 的 ``--`` 透传就是
-    这么用的），那种目标才需要截断祖先枚举。
+    这么用的），那种目标才需要截断祖先枚举。补的时候必须插在 ``--`` 之前——``--`` 之后的
+    一切都被当成路径参数，追加在末尾会让这个选项自己变成「找不到的路径」。
     """
     args: list[str] = []
     if spec.marker_expr:
         args += ["-m", spec.marker_expr]
     args += ["-p", DUMP_PLUGIN, "--qaplat-dump", str(_dump_path_for(spec.layer.value))]
-    args += [str(item) for item in extra]
-    args += confcutdir_args([str(item) for item in extra])
+    args += with_confcutdir([str(item) for item in extra])
     return args
 
 

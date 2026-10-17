@@ -41,6 +41,17 @@ def confcutdir_args(args: Sequence[str]) -> list[str]:
     只在目标确实位于 ``ROOT`` 之外时才补：仓库内目标本来就以 ``ROOT`` 为根，
     祖先链只到 ``ROOT`` 为止，多写一条只会让 nodeid 的解析规则跟着变，是纯粹的
     风险。调用方自己已经传了 ``--confcutdir`` 时一律让位。
+
+    已知边界（都是既有局限，不是这个函数引入的）：
+
+    * 只看**第一个**真实存在的位置参数就返回。所以``[仓库内路径, --, 仓外目标]``
+      这种混排里仓外目标得不到保护——它的祖先链照样全枚举。实际触发面很窄：
+      ``qaplat gate``/``run`` 透传的目标恒为单个，只有 ``registry build`` 可能传混合
+      列表，而且还得仓外目标的祖先里正好有一个会炸的 ``conftest.py`` 才看得见。
+      要收口就得改成取所有仓外目标的公共祖先，那是行为变更，得配新用例。
+    * ``exists()`` 与 ``resolve()`` 按**当前进程**的 cwd 判断，但 ``collect_cases``
+      拉起子进程时 cwd 是 ``ROOT``。所以从别的目录传相对路径进来，两边看到的
+      不是同一个文件。这条从子进程固定 cwd 那天起就存在。
     """
     if any(str(item).startswith("--confcutdir") for item in args):
         return []
@@ -58,3 +69,35 @@ def confcutdir_args(args: Sequence[str]) -> list[str]:
             return [f"--confcutdir={resolved.parent}"]
         return []
     return []
+
+
+def _splice_index(args: Sequence[str]) -> int:
+    """返回 ``--`` 在参数列表里的位置；没有 ``--`` 时就是列表末尾。"""
+    for index, item in enumerate(args):
+        if str(item) == "--":
+            return index
+    return len(args)
+
+
+def with_confcutdir(args: Sequence[str]) -> list[str]:
+    """返回补好 ``--confcutdir`` 的完整参数列表。
+
+    这个函数存在的唯一理由是**位置**：``--`` 之后的一切都被 pytest 当成位置参数
+    （要收集的路径），把 ``--confcutdir=...`` 追加在末尾，只要调用方用了 ``--``
+    透传（``qaplat run --layer smoke -- <仓外目标>``，见 ``FROZEN_CLI.md``），
+    这个选项就会变成一个不存在的路径，直接 ``file or directory not found``、
+    退出码 4、零收集。所以选项必须插在 ``--`` **之前**。
+
+    决策本身仍由 :func:`confcutdir_args` 做，这里只负责落位。
+
+    已知边界：``--`` 只按字面匹配，不认「上一个 token 是必须带值的选项」。所以
+    ``['-k', '--', <目标>]`` 会把选项插进 ``-k`` 与它的值之间，把 ``-k`` 的值换成
+    confcutdir 串。触发条件是用户真把 ``-k`` 的值写成 ``--``，代价远小于为它做
+    完整的选项表解析。
+    """
+    items = [str(item) for item in args]
+    extra = confcutdir_args(items)
+    if not extra:
+        return items
+    at = _splice_index(items)
+    return [*items[:at], *extra, *items[at:]]

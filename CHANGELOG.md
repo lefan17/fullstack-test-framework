@@ -873,19 +873,38 @@ mypy 114 → **115 source files**）、`CONTRIBUTING.md`（默认档 520 → **5
 
 **可证伪**：新增 `testcases/platform/test_registry_coverage.py` 里 4 条用例，其中
 `test_collect_cases_survives_a_churning_temp_root` 真开 4 个线程对着同一个根反复建删目录。
-开着修法跑 8 轮全绿，用 `-p nocut`（把 `confcutdir_args` 换成恒 `[]`）跑 5 轮全红。
+开着修法跑 8 轮全绿，用 `-p nocut`（把 `confcutdir_args` 换成恒 `[]`）跑 8 轮全红。
 
-**同时同步的数字**（新增 4 条用例后全仓从 571 涨到 **575** 条；平台层 171 → **175**）：
-`README.md`（收集数、各 `-m` 的 `deselected`、覆盖率两行与它的免责段、无编号 nodeid 544 → **548**）、
-`CONTRIBUTING.md`（默认档 537 → **541** 收集、`-m "not ui"` 期望 526 → **530** passed）、
-`.github/PULL_REQUEST_TEMPLATE.md`（171 → **175**）、`.github/workflows/test.yml`（平台层注释
-171 → **175**、覆盖率注释与 step summary 的 56.56%-56.58% → **56.20%**）、
-`docs/质量门禁策略.md`（571 → **575**、171 → **175**）、`docs/platform-usage.md`、
+**这个修法自己带进来一次回归，而且只有 `--` 才踩得到。** 第一版把 `--confcutdir=...` 无条件追加在
+argv 末尾；而 `qaplat/FROZEN_CLI.md` 的第 16 行承诺调用方可以用 `--` 把目标透传给 pytest。
+`--` 之后的一切都被 pytest 当成路径参数，于是那个选项变成了一个不存在的路径：
+`ERROR: file or directory not found: --confcutdir=...` → 退出码 4 → 零收集。
+四类入口全都中招：`qaplat run --layer smoke -- <仓外目标>` 退出 4（不带 `--` 是正常的 5、
+即"没收集到该层用例"）、`gate --layer smoke -- <目标>` 报 `total=0`、`registry build -- <目标>`
+抛 `CaseCollectionError returncode: 4`。用 `git archive fdbdaef^` 的干净快照对照过，
+修法之前同一条命令是 5 / 0 —— 所以这是本次引入的，不是既有缺陷。
+而当时新增的 4 条用例**没有一条传 `--`**（`grep '"--"' testcases\platform\*.py` 零命中），
+所以整批新用例和整个平台层都是绿的。这正是"新写的守卫只覆盖了我想到的那条路"。
+
+**修法**：把落位收进 `qaplat/paths.py` 的 `with_confcutdir(args)` —— 先算 `confcutdir_args`，
+为空就原样返回，否则用 `_splice_index()` 找到 `--` 的位置（没有就是末尾）再插进去。
+两条采集通道改调它，并补 2 条用例：一条纯函数断言（无 `--` 追加在末尾、有 `--` 插在前面、
+`-k smoke -- ...` 这种混排也对、仓内路径不补），一条真跑 `collect_cases(["--", str(仓外目标)])`。
+**可证伪**：`gate --layer smoke -- <仓外目标>` 现在 `total=1 passed=1` 退出 0，
+`registry build -- <目标>` 退出 0；`-p nocut` 下 churn A/B 仍是 8 轮全红。
+
+**同时同步的数字**（新增 6 条用例后全仓从 571 涨到 **577** 条；平台层 171 → **177**）：
+`README.md`（收集数、各 `-m` 的 `deselected`、覆盖率两行与它的免责段、无编号 nodeid 544 → **550**）、
+`CONTRIBUTING.md`（默认档 537 → **543** 收集、`-m "not ui"` 期望 526 → **532** passed）、
+`.github/PULL_REQUEST_TEMPLATE.md`（171 → **177**）、`.github/workflows/test.yml`（平台层注释
+171 → **177**、覆盖率注释与 step summary 的 56.56% → **56.08%**）、
+`docs/质量门禁策略.md`（571 → **577**、171 → **177**）、`docs/platform-usage.md`、
 `docs/platform-metrics-report.md`（只改指向句，快照数字不动）、`docs/wave3-gate-policy-handoff.md`。
 
-覆盖率两栏随代码一起动了：`not ui` → `TOTAL 8425 1154-1157 86%`，`api` → `TOTAL 8246 3612 56%（56.20%）`。
-分母涨 65 条是因为 `qaplat/paths.py` 多了 `confcutdir_args()`，而它只被平台层与端到端用例走到，
-所以 `-m api` 那一栏未覆盖数从 3552 涨到 3612、百分比从 56.56% 落到 56.20%——这是真下降，不是抖动。
+覆盖率两栏随代码一起动了：`not ui` → `TOTAL 8450 1156 86%`，`api` → `TOTAL 8271 3633 56%（56.08%）`。
+分母涨 90 条是因为 `qaplat/paths.py` 多了 `confcutdir_args()`、`with_confcutdir()` 与两条通道的调用点，
+外加钉住这两件事的 6 条平台层用例；这些行只被平台层与端到端用例走到，
+所以 `-m api` 那一栏未覆盖数从 3552 涨到 3633、百分比从 56.56% 落到 56.08%——这是真下降，不是抖动。
 ---
 
 ## 2026-10-13

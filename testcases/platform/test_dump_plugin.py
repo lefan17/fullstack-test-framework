@@ -84,7 +84,7 @@ def _clean_state(request: pytest.FixtureRequest) -> Any:
     """
     nodeid = request.node.nodeid
     saved = {key: (value.copy() if isinstance(value, dict) else value) for key, value in _dump._STATE.items()}
-    _dump._STATE.update({"dump": None, "records": {}, "markers": {}, "files": {}, "covers": {}})
+    _dump._STATE.update({"dump": None, "records": {}, "markers": {}, "files": {}, "covers": {}, "renamed": {}})
     yield
     # 走到这里时真钩子已经处理完 setup 与 call 两个报告，records 里就是本用例的真实结论。
     live = _dump._STATE["records"].get(nodeid)
@@ -244,6 +244,63 @@ def test_sessionfinish_does_nothing_without_dump_option(tmp_path: Path) -> None:
 def test_sessionfinish_in_worker_writes_nothing(tmp_path: Path) -> None:
     """``-n`` 下的 worker 不落盘，避免和 controller 抢同一个路径。"""
     assert _finish(tmp_path, worker=True) is None
+
+
+# ------------------------------------------------------------------ 跨盘 nodeid 补前缀
+
+
+class _Item:
+    """够用的 collection item 替身：只带 ``nodeid`` 与 ``path``。"""
+
+    def __init__(self, nodeid: str, path: object) -> None:
+        self.nodeid = nodeid
+        self.path = path
+        self._markers: list = []
+
+    def iter_markers(self, name: str | None = None) -> list:
+        return [m for m in self._markers if name is None or m.name == name]
+
+
+class _Marker:
+    def __init__(self, name: str, args: tuple = ()) -> None:
+        self.name = name
+        self.args = args
+
+
+def test_qualified_nodeid_leaves_normal_nodeid_alone() -> None:
+    """正常相对路径必须原样返回——这是绝大多数收集的情形，改它就是改全部报表。"""
+    item = _Item("testcases/mes/test_a.py::test_x", Path("testcases/mes/test_a.py"))
+    assert _dump._qualified_nodeid(item) == "testcases/mes/test_a.py::test_x"
+
+
+def test_qualified_nodeid_repairs_a_cross_drive_empty_prefix() -> None:
+    """跨盘时 pytest 算出 ``::test_x``，前缀由 ``item.path`` 补回绝对路径。"""
+    item = _Item("::test_probe_a", Path(r"C:\Users\lefan\AppData\Local\Temp\p\probe.py"))
+    assert _dump._qualified_nodeid(item) == r"C:\Users\lefan\AppData\Local\Temp\p\probe.py::test_probe_a"
+
+
+def test_qualified_nodeid_without_path_stays_broken() -> None:
+    """没有 ``path`` 时不要硬造：返回原值，让下游按空来源处理，而不是编一个假路径。"""
+    assert _dump._qualified_nodeid(_Item("::test_probe_a", None)) == "::test_probe_a"
+
+
+def test_collection_bookkeeping_is_keyed_by_the_repaired_nodeid() -> None:
+    """补完前缀后，markers/files/covers 三张表必须挂在**同一个新 key** 上。
+
+    这是修复的关键：只改 nodeid 不改 key，``registry`` 拿到的还是 ``::name``，
+    读源码那一步照样落空——表面上「修了」，报表上一分未动。
+    """
+    path = Path(r"C:\Users\lefan\AppData\Local\Temp\p\probe.py")
+    item = _Item("::test_probe_a", path)
+    item._markers = [_Marker("covers", ("healthz_api_v1_healthz_get",))]
+    _dump.pytest_collection_modifyitems(None, None, [item])
+
+    expected = rf"{path}::test_probe_a"
+    assert set(_dump._STATE["markers"]) == {expected}
+    assert _dump._STATE["files"][expected] == str(path)
+    assert _dump._STATE["covers"][expected] == ["healthz_api_v1_healthz_get"]
+    # 留痕：跨盘补前缀不是静默改数据，dump 里能查到它被改过。
+    assert _dump._STATE["renamed"] == {"::test_probe_a": expected}
 
 
 # ------------------------------------------------------------------ 兜底解析（dump 缺位时）

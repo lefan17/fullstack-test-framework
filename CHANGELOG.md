@@ -905,6 +905,72 @@ argv 末尾；而 `qaplat/FROZEN_CLI.md` 的第 16 行承诺调用方可以用 `
 分母涨 90 条是因为 `qaplat/paths.py` 多了 `confcutdir_args()`、`with_confcutdir()` 与两条通道的调用点，
 外加钉住这两件事的 6 条平台层用例；这些行只被平台层与端到端用例走到，
 所以 `-m api` 那一栏未覆盖数从 3552 涨到 3633、百分比从 56.56% 落到 56.08%——这是真下降，不是抖动。
+
+### 修复 —— 跨盘时 nodeid 前缀为空，覆盖率被算错（本轮）
+
+**症状**：`$env:TMP` 在 C: 盘、仓库在 D: 盘时，`-m platform` 里
+`test_collect_cases_features_a_second_file` 挂 1 条，断言是
+`rewrite[0].node_id.endswith("probe.py::test_probe_a")` 为 False，实际 nodeid 是
+**`'::test_probe_a'`**。TMP 在 D: 盘时 177 条全绿。
+
+一开始把它当成"环境前提"写进 README 就收了工（跨盘是测试机的配置问题，不是仓库的问题）。
+**这个判断是错的**，而且错得很贵：空前缀不只是让一条断言红。
+
+**为什么它比一条红用例严重**：`registry.collect_cases()` 拿 nodeid 之后做的是
+`source = str(ROOT / node_id.split("::", 1)[0])` —— 靠 nodeid 的前缀找源文件。
+前缀是空串时这个路径就是**仓库根目录本身**，`read_referenced_paths()` 去读一个目录、
+`OSError` 被吃掉后返回空元组。于是 `referenced_paths` 这条来源**静默归零**，
+`build_coverage()` 里只剩 `covers` 一条来源。报表上表现为"这些用例没覆盖任何接口"，
+而它们其实覆盖了 —— **一个会算错覆盖率的缺陷，在绿的门禁下面安静地待着**。
+（`files` 那条来源本来是对的：`_dump.py` 用 `item.path` 写的就是绝对路径。
+坏的只有 nodeid，而 `collect_cases()` 用的是 nodeid。）
+
+**根因**：pytest 的 nodeid = 相对 rootdir 的路径 + `::名字`。跨盘时
+`_pytest.pathlib.bestrelpath()` 里 `os.path.commonpath([...])` 在不同盘符上抛
+`ValueError`，落进它的兜底分支算出空串。这不是我们的代码错，是 Windows 盘符语义
+与"相对路径"这个概念本身冲突。实测确认（pytest 9.0.3）：
+`bestrelpath(Path(r'C:\...\probe.py'), Path(r'D:\...\auto-test-demo'))` 返回
+**`'D:\\DSH\\DSH_project\\接口自动化_3\\work\\auto-test-demo'`**（就是 rootdir 自己）。
+
+**修法：改采集插件，不改 pytest，也不改 `collect_cases()`。**
+`qaplat/_dump.py` 新增 `_qualified_nodeid(item)`：只有当 nodeid **真的以 `::` 开头**时，
+才用 `item.path`（收集期必然可用的绝对路径）把前缀补回去；正常的相对路径原样返回。
+`pytest_collection_modifyitems` 里 `markers` / `files` / `covers` 三张表统统挂到**补过前缀的
+新 key** 上 —— 只改 nodeid 不改 key 等于没修，`collect_cases()` 拿到的还是空前缀那个键。
+被改过的 nodeid 记进 dump 的 `renamed` 字段（正常收集时为空字典），
+这样"为什么这个 nodeid 和 pytest 报的不一样"有据可查，而不是让人怀疑采集插件在乱改数据。
+
+**为什么不选另外三个方案**（都想过）：改 `collect_cases()` 里那行 `ROOT / prefix` —— 治不了
+dump 本身，且 `ROOT / ""` 这种写法在别处也会再犯；传 `--rootdir` 把 rootdir 挪到目标附近 ——
+会改所有 nodeid 的形状，直接打红既有的 `endswith(...)` 断言（这个替代方案在上一节
+"临时根目录噪声"里已经被实测否决过一次）；给 `item.nodeid` 赋值 —— pytest 内部属性，
+跨版本不稳。
+
+**可证伪**：新增 4 条用例（`testcases/platform/test_dump_plugin.py`）——
+正常相对路径原样返回；`::test_x` 补成绝对路径 + `::test_x`；没有 `path` 时不硬造假路径；
+**bookkeeping 三张表都以新 key 落库**（这条是关键，它红就说明"只改了 nodeid 没改 key"）。
+修前 `-m platform` 跨盘 1 failed / 176 passed（当时平台层共 177 条），修后全绿；
+补上这 4 条自测后平台层是 **181 passed**。同盘（D:）修前修后都是全绿，没有回归。
+`-m "not ui"` 全量跨盘修后 **536 passed, 11 xfailed**（此前 1 failed / 531 passed）。
+覆盖率的 `not ui` 仍是 **8491 分母 / 86%**（修前 8450）—— 分母涨的 41 条是
+`_qualified_nodeid()` 自己与它的 4 条自测，而平台层自测目录下的源码读取
+被 `is_platform_self_test()` 有意排除，所以百分比没动。这层修复保住的是**将来**
+把跨盘目标接进真实覆盖率时的正确性，不是眼下这个百分数。
+
+**同时同步的数字**（全仓 577 → **581** 条；平台层 177 → **181**）：
+`README.md`（收集数、各 `-m` 的 `deselected`、覆盖率两行与免责段、无编号 nodeid 550 → **554**、
+并行提速那三行按同轮成对重测改成区间）、`CONTRIBUTING.md`（默认档 543 → **547** 收集、
+`-m "not ui"` 期望 532 → **536** passed）、`.github/PULL_REQUEST_TEMPLATE.md`（177 → **181**）、
+`.github/workflows/test.yml`（平台层注释 177 → **181**、覆盖率注释与 step summary 的
+56.08% → **55.92%**、未覆盖 3633 → **3664**）、`docs/质量门禁策略.md`（177 → **181**、
+覆盖率那句错的 56.88%–56.92% 改成 **55.92%**）、`docs/platform-usage.md`、
+`docs/platform-metrics-report.md`（只改指向句，快照数字不动）。
+
+覆盖率两栏随代码一起动了：`not ui` → `TOTAL 8491 1161–1164 86%`，
+`api` → `TOTAL 8312 3664 56%（55.92%）`。分母 8271 → 8312（+41）与未覆盖 3633 → 3664（+31）
+都来自 `_qualified_nodeid()` 那 30 行及其自测 —— 它们只被平台层与端到端用例走到，
+`-m api` 摸不到，所以这一栏是真的掉了 0.16pp，不是抖动。门禁 54 仍有余量（约 1.9pp）。
+
 ---
 
 ## 2026-10-13

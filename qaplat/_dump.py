@@ -26,6 +26,7 @@ _STATE: dict[str, Any] = {
     "markers": {},
     "files": {},
     "covers": {},
+    "renamed": {},
 }
 
 
@@ -46,20 +47,52 @@ def pytest_configure(config: Any) -> None:
     _STATE["markers"] = {}
     _STATE["files"] = {}
     _STATE["covers"] = {}
+    _STATE["renamed"] = {}
+
+
+def _qualified_nodeid(item: Any) -> str:
+    """给跨盘目标补回 nodeid 的路径前缀。
+
+    pytest 的 nodeid 是「相对 rootdir 的路径 + ``::名字``」。当要收集的文件**与 rootdir
+    不在同一个盘符**时（Windows 上 ``tmp_path`` 在 C:、仓库在 D:），
+    ``_pytest.pathlib.bestrelpath`` 的 ``os.path.commonpath`` 直接抛
+    ``ValueError`` 落进兜底分支，算出**空串**——于是 nodeid 变成 ``::test_probe_a``，
+    前面那半截没了。
+    这不是「显示不好看」的问题：``registry.collect_cases`` 靠 nodeid 前缀找源文件
+    （``node_id.split("::", 1)[0]``），前缀空掉就读不到源码，``referenced_paths``
+    整条来源静默归零 —— 覆盖率报表上表现为「这条用例没覆盖任何接口」，
+    而实际上它覆盖了。
+
+    修法不是去改 pytest，而是**在采集期就把它补回来**：``--collect-only`` 时
+    ``item.path`` 是绝对路径（``_dump.py`` 本来就在用它写 ``files``），
+    所以前缀由这里给准。判据尽量窄：只有 nodeid 真的以 ``::`` 开头才动手，
+    正常相对路径一律原样返回。
+    """
+    nodeid = item.nodeid
+    if not nodeid.startswith("::"):
+        return nodeid
+    path = getattr(item, "path", None)
+    if path is None:
+        return nodeid
+    return f"{path}{nodeid}"
 
 
 def pytest_collection_modifyitems(session: Any, config: Any, items: list[Any]) -> None:
     for item in items:
-        _STATE["markers"][item.nodeid] = sorted({marker.name for marker in item.iter_markers()})
+        nodeid = _qualified_nodeid(item)
+        if nodeid != item.nodeid:
+            # 只在跨盘这种退化情形下留痕，方便排查用；正常收集时这个字典是空的。
+            _STATE["renamed"][item.nodeid] = nodeid
+        _STATE["markers"][nodeid] = sorted({marker.name for marker in item.iter_markers()})
         path = getattr(item, "path", None)
         if path is not None:
-            _STATE["files"][item.nodeid] = str(path)
+            _STATE["files"][nodeid] = str(path)
         # ``covers`` 的取值只能在收集期拿：marker 参数（``marker.args``）不进入任何
         # pytest 报告，事后无从恢复。用 marker 参数而不是正则扫源码，是为了让
         # ``covers = ("a", "b")`` 这类归并写法也能被正确读出。
         covers = [str(arg) for marker in item.iter_markers(name="covers") for arg in marker.args if arg]
         if covers:
-            _STATE["covers"][item.nodeid] = sorted(set(covers))
+            _STATE["covers"][nodeid] = sorted(set(covers))
 
 
 def pytest_runtest_logreport(report: Any) -> None:
@@ -115,6 +148,9 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "markers": _STATE["markers"],
         "files": _STATE["files"],
         "covers": _STATE["covers"],
+        # 跨盘退化时 nodeid 被补过前缀的痕迹（正常收集时为空）。留下它是为了让
+        # 「为什么这个 nodeid 和 pytest 报的不一样」有据可查，而不是让人怀疑采集插件。
+        "renamed": _STATE["renamed"],
     }
     path = Path(target)
     path.parent.mkdir(parents=True, exist_ok=True)

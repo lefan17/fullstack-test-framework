@@ -412,7 +412,7 @@ pytest --html=report.html --self-contained-html
 | 契约-自动导出 | 224 | 从 FastAPI 自动导出 `docs/openapi.json`（29 operation）并做漂移门禁；schemathesis 属性测试按 spec 生成请求 + 手写契约与自动导出的逐条对照。扫出 6 类真实契约缺陷：DEF-05/06 已修并由正常用例固化，DEF-01~04 共 11 条 `xfail(strict=True)` 钉住 |
 | 契约-登录 | 29 | 用 5 种设计方法推出的 30 条用例（等价类/边界值/判定表/场景法/错误推测），钉住被测服务当前行为并标注 6 个已知缺陷（FIND-01~06） |
 | UI-Demo Web / 混合链路 | 20 | 本地 Demo Web 的页面与接口断言 15 条（`test_mes_web_app.py`，不起浏览器）+ 页面操作与接口校验的混合链路 5 条（`test_mes_mixed_flow.py`，用浏览器） |
-| 平台层（qaplat 自测） | 177 | 门禁分层表达式、度量库、覆盖矩阵 registry、报表 CLI、采集插件分类等平台自身的用例（`testcases/platform/`） |
+| 平台层（qaplat 自测） | 181 | 门禁分层表达式、度量库、覆盖矩阵 registry、报表 CLI、采集插件分类、跨盘 nodeid 补前缀等平台自身的用例（`testcases/platform/`） |
 | 数据隔离 | 会话级 1 项 | 会话结束时各表行数与关键数值列合计（库存可用/占用/已发料、流水数量与账面余额）必须回到基线，且流水余额链逐笔自洽（见下方"数据隔离"一节） |
 
 业务全链路那些用例**不依赖公网**：`testcases/mes/` 的 session 级 fixture 会自己
@@ -521,7 +521,7 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 | 已登记为用例编号的前缀 | `LC`（30 个编号 / 17 个函数 / 27 个 nodeid） |
 | 一条 nodeid 承载多个编号 | `test_lc22_to_lc25_decision_table` → LC-22、LC-23、LC-24、LC-25 |
 | 未解析（抽到编号却找不到 nodeid） | 0 |
-| 无编号 nodeid（装全依赖 + 两条线全部合入） | **550**：contract 224、platform **177**、mes 64、api 49、ui 34、login 2 |
+| 无编号 nodeid（装全依赖 + 两条线全部合入） | **554**：contract 224、platform **181**、mes 64、api 49、ui 34、login 2 |
 
 > **无编号那一行的数字随收集范围变，写死会过期——三组数字都对，差的是"跑在哪个树"。**
 > 同一台机器上：依赖没装齐时（`test_schemathesis_properties.py` 收集报
@@ -541,7 +541,9 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 > 再给两条 pytest 采集通道补 4 条 `--confcutdir` 自测（含一条真开 4 线程反复建删临时目录的用例）后是
 > **575** 条收集 / **548** 条无编号（contract 224、platform **175**、mes 64、api 49、ui 34、login 2）；
 > 最后补 2 条钉住「`--confcutdir` 必须落在 `--` 之前」的用例（那是一条真会被 `--` 透传踩到的回归）后是
-> **577** 条收集 / **550** 条无编号（contract 224、platform **177**、mes 64、api 49、ui 34、login 2）
+> **577** 条收集 / **550** 条无编号（contract 224、platform **177**、mes 64、api 49、ui 34、login 2）；
+> 再给跨盘 nodeid 补前缀这处修复补 4 条自测后是
+> **581** 条收集 / **554** 条无编号（contract 224、platform **181**、mes 64、api 49、ui 34、login 2）
 > ——上表那一行就是最后这组。**脚本的原始输出才是权威**：
 > README 只钉"有编号的 30 / 27"这一组，它与装了哪些依赖、树里有哪些文件都无关，不会漂。
 > 复现：`python scripts/case_index.py`（它自己调 `python -m pytest --collect-only` 取 nodeid；
@@ -574,6 +576,30 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 **缺陷、用例、契约三者的对应关系**能被完整看到：用例为什么这么写、契约在哪一行
 被实现悄悄放宽了，都能查证。这也是面试讲"你怎么设计用例"时最缺的一环——
 只讲用例本身，讲不出它是**针对什么**设计的。
+
+### 提交历史里的 `dispatcher` / `integ` / `agent` 是什么
+
+点开提交历史会看到 173 条提交里有 100 条的作者不是 `Lefan Ma`：
+
+| 作者 | 邮箱 | 条数 | 是什么 |
+|---|---|---|---|
+| `Lefan Ma` | `128964809+lefan17@users.noreply.github.com` | 67 | GitHub 账号，人工 review 与亲自改的那部分 |
+| `dispatcher` | `dispatcher@local` | 76 | 本机未配置 git user 时，AI 编码代理会话提交的 |
+| `integ` | `i@x` | 17 | 集成／收口会话（跨仓库搬运、数字核对、口径统一） |
+| `agent` | `agent@local` | 7 | 早期 Agent 会话（波 1 的认证改造与 schemathesis 契约套件） |
+| `dependabot[bot]` | — | 6 | 依赖升级 |
+
+**它们不是外部贡献者，是这个仓库的开发过程本身。** 逐条核对过：`dispatcher` 那 76 条是
+`fix(qaplat):` / `ci:` / `test:` 一类的小步修复，`integ` 那 17 条是 `docs:` 的数字重算与口径统一，
+`agent` 那 7 条是 `feat(apis):` / `feat(secrets):` 的功能实现——全都在本仓库的演进线里，
+没有一条是别人写进来的。
+
+写在这里不是辩解，是因为它恰好是本仓库最值得说的一件事：**这个仓库的大部分代码是
+AI 编码代理写的，而它现在是 581 条用例、86% 覆盖、9 个 job 全绿的状态。**
+身份没统一是工程疏漏（后续提交已改用同一身份），但「AI 写的代码要过什么闸才敢上线」
+这个问题的答案不在这里——在 [`设计要点`](#设计要点面试会问)（幂等重试、代理回退、耗时口径）、
+`qaplat/` 的四层门禁，以及 [`docs/质量门禁策略.md`](docs/质量门禁策略.md) 那份被
+`check_gate_policy.py` 机器校验的文档里。
 
 ## 设计要点（面试会问）
 
@@ -684,32 +710,32 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 > **一个容易看错的点**：`api` 与 `mes`、`login` 三个标记有**重叠** ——
 > `testcases/mes/` 的用例同时打了 `mes` 和 `api`，`testcases/login/` 的同时打了
 > `login` 和 `api`。所以 `-m api` 选到 132 条（49 条接口目录 + 54 条 MES + 29 条登录），
-> **这些数字不能相加**。全量共 577 条 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 177 平台层自测。
+> **这些数字不能相加**。全量共 581 条 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 181 平台层自测。
 > 另有 2 条性能基线用例（`-m perf`）挂在接口目录里，`-m 'api and not perf'` 是 130 条。
 > 契约那 224 条是**独立标记**（`-m contract`），不并入 `api` ——
 > 它们要起本地服务、按 spec 生成请求，属于另一档耗时（约 20 秒），
 > 不适合塞进"日常开发随手跑"的那一组。
 
 ```text
-pytest --collect-only -q                 577 tests collected
+pytest --collect-only -q                 581 tests collected
 
-pytest -m api                            132 passed, 445 deselected in 71.70–74.03s
-pytest -m mes                             64 passed, 513 deselected in 37.60s
-pytest -m login                           29 passed, 548 deselected in  3.24s
-pytest -m contract                       213 passed, 353 deselected, 11 xfailed in 19.63s
-pytest -m perf                             2 passed, 575 deselected in  5.55s
-pytest -m platform                       177 passed, 400 deselected in 45.31s
-pytest -m ui                             34 passed, 543 deselected in 21.62–33.70s（收集 34 条；浏览器已装好，全绿，见下）
+pytest -m api                            132 passed, 449 deselected in 65.73–73.09s
+pytest -m mes                             64 passed, 517 deselected in 36.89–37.22s
+pytest -m login                           29 passed, 552 deselected in  3.01s
+pytest -m contract                       213 passed, 357 deselected, 11 xfailed in 19.14s
+pytest -m perf                             2 passed, 579 deselected in  5.25s
+pytest -m platform                       181 passed, 400 deselected in 28.00s
+pytest -m ui                             34 passed, 547 deselected in 33.36s（浏览器已装好，全绿，见下）
 
 cd traffic-replay; pytest                173 passed in 17.57s（批次 2，自带 pytest.ini）
 
-pytest -m api -n 4 --dist loadfile       132 passed in 31.63s（同一轮串行 74.03s，约 2.34×）
-pytest -m mes -n 4 --dist loadfile        64 passed in 20.72s（同一轮串行 37.62s，约 1.82×）
+pytest -m api -n 4 --dist loadfile       132 passed in 28.80–30.04s（同轮串行 68.02–73.09s，约 2.33×）
+pytest -m mes -n 4 --dist loadfile        64 passed in 17.97–18.33s（同轮串行 36.89–36.95s，约 2.02×）
 CONTRACT_MAX_EXAMPLES=50 pytest -m contract
                                          213 passed, 11 xfailed in 53.77s  # 放大 6.25 倍样例，耗时 ×2.5
 
-pytest -m "not ui" --cov=. --cov-report=term               TOTAL 8450 1157–1164 86%
-pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8271 3631–3633 56%（56.08%~56.10%）
+pytest -m "not ui" --cov=. --cov-report=term               TOTAL 8491 1161–1164 86%
+pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8312 3664 56%（55.92%）
                                         Required test coverage of 54% reached（退出码 0）
 pytest -m mes --cov=mock_server --cov-report=term          TOTAL 1374 235 83%
 pytest -m login --cov=login_app --cov-report=term          TOTAL   88  13 85%
@@ -721,42 +747,51 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
                                         CI 上由 `test` job 里那一步执行，并由门禁脚本钉住
 ```
 
-> **上面这一块都是 2026-10-18 重跑的实测**，没有一行是从旧值推算的。基准树是本条提交的父提交
-> （即新增 `testcases/platform/test_dump_plugin.py` 之前的那棵树）；覆盖率与各层计数都在同一棵树上测。
+> **上面这一块都是 2026-10-18 重跑的实测**，没有一行是从旧值推算的。基准树是**含跨盘 nodeid 修复
+> 及其 4 条自测**的当前树（581 条收集）；覆盖率与各层计数都在同一棵树上测。
 > 一个例外要说清：`passed` / `deselected` / 计数都是**可复现的定值**（串行重跑逐位相同），
-> 但**耗时是单次观测**——`-m api` 与 `-m ui` 打公网，批次间能差十几秒（10-17 那轮两轮 `-m api`
-> 61.85s ↔ 60.44s；10-18 这轮同一台机器上是 74.03s ↔ 71.70s，两天差了近 20%，
-> 所以这三行写了区间）。所以耗时那一栏请读量级，门禁和判定从不依赖它。
+> 但**耗时是单次观测**——`-m api` 与 `-m ui` 打公网，批次间能差十几秒（同一天这轮两轮 `-m api`
+> 65.73s ↔ 73.09s，差了 11%；上一轮是 71.70s ↔ 74.03s，两天合起来跨度近 20%，
+> 所以耗时与并行那两行都写了区间）。**提速比值必须读同一轮内的对**：
+> `-m api` 是 68.02s→28.80s（2.36×）与 73.09s→30.04s（2.43×），`-m mes` 是 36.89s→18.33s（2.01×）
+> 与 36.95s→17.97s（2.06×）——**不要拿不同批次的两个数凑比**，那会算出根本不存在的"提速"。
 > 前提：`$env:TMP` 必须指向一个**确实存在**的可写目录——那里不可写时 pytest 的 basetemp 会回落到仓根，
 > 它生成的 `.py` 会被 `--cov=.` 算进分母，分母就跟着漂。
-> **另一个已测到的前提**：`$env:TMP` 与仓库**不在同一个盘**时，`-m platform` 里
-> `test_collect_cases_features_a_second_file` 会挂 1 条——pytest 9.0.3 对 rootdir 之外的跨盘路径
-> 算不出相对路径，nodeid 的前缀会变成空串（dump 里是 `::test_probe_a`），
-> 断言与源码回溯都跟着失效。同盘（都在 D:）时 177 条全绿。这是环境前提，不是用例缺陷。
+> **跨盘那个坑已经修了（2026-10-18）**：`$env:TMP` 与仓库**不在同一个盘**时，pytest 9.0.3 对
+> rootdir 之外的跨盘路径算不出相对路径（`bestrelpath` 的 `commonpath` 抛 `ValueError`），
+> nodeid 的前缀会变成空串（dump 里是 `::test_probe_a`），`registry` 靠前缀读源码那一步跟着失效。
+> 现在由采集插件 `qaplat/_dump.py::_qualified_nodeid` 在收集期用 `item.path` 把前缀补回来，
+> 被改过的 nodeid 记在 dump 的 `renamed` 字段里（正常收集时为空）。**修前**跨盘 `-m platform`
+> 挂 1 条、同盘 177 全绿；**修后**两种盘符下都是全绿（当前 **181 passed**，多出的 4 条就是这次
+> 补的跨盘自测）。
+> 这个修复不是为了「让某台机器变绿」——空前缀会让 `referenced_paths` 整条来源静默归零，
+> 报表上表现为「这条用例没覆盖任何接口」，而它其实覆盖了；那是个会算错覆盖率的缺陷。
 > **marker 真的重叠，别做加法**：`-m api` 的 132 条 = `api and mes` 54 条 + `api and login` 29 条
 > + 只属接口目录的 49 条（`-m perf` 的 2 条就在这 49 条里）；另有 `mes and not api` 10 条。
 > 所以 132 = 49 + 54 + 29 这个加法成立，但 "49 + 54 + 29" 里的 54、29 已经分别被 `-m mes`、`-m login` 数过一遍。
-> 全量 577 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 177 平台层自测（这六组互不重叠，加法成立）。
+> 全量 581 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 181 平台层自测（这六组互不重叠，加法成立）。
 > **覆盖率两行同一个道理**：`--cov=.` 的分母里含 `qaplat/` 与 `mes_web/` 整目录，
-> 所以 `not ui` 是 8450 分母 / 未覆盖 1157–1164 / **86%**，
-> 而只跑 `-m api` 的分母是 8271 / 未覆盖 3631–3633 / **56%（56.08%~56.10%）**。
+> 所以 `not ui` 是 8491 分母 / 未覆盖 1161–1164 / **86%**，
+> 而只跑 `-m api` 的分母是 8312 / 未覆盖 3664 / **56%（55.92%）**。
 > 两组的分母差 179 条，差的正是 `-m api` 摸不到的那些文件——所以两个百分比不可比，
 > 门禁挂在 `-m api` 上只能拿 56% 这一栏说事。
-> 这一栏在 3631–3633 这一档：`-m api` 不 import `testcases/` 里的平台层用例，分母比 `not ui` 少 179 条，
+> 这一栏在 3664 这一档：`-m api` 不 import `testcases/` 里的平台层用例，分母比 `not ui` 少 179 条，
 > 但那 179 条里有相当一部分是被 `-m api` 覆盖不到的模块，所以未覆盖行数反而更多。
-> **未覆盖那一栏是区间，这是判据不是美化**：10-17 与 10-18 两轮复测累计跑了 7 次
-> （`not ui` 串行 4 次、并行 `-n 4` 3 次；`-m api` 串行 2 次、并行 `-n 4` 2 次），
-> `not ui` 的未覆盖数落在 **1156–1164**、`-m api` 落在 **3631–3633**，
-> 而**分母 8450 / 8271 每一次都逐位相同**——跳的只是子进程里 `mock_server` 收尾落盘那几行
+> **未覆盖那一栏是区间，这是判据不是美化**：10-17、10-18 两轮复测累计跑了 9 次
+> （`not ui` 串行 4 次、并行 `-n 4` 3 次，10-18 收官这轮又串行、并行各 1 次；
+> `-m api` 串行 3 次、并行 `-n 4` 3 次），
+> `not ui` 的未覆盖数落在 **1161–1164**，
+> 而**分母 8491 / 8312 每一次都逐位相同**——跳的只是子进程里 `mock_server` 收尾落盘那几行
 > （原因见下面 `mock_server` 那一节）。
-> 百分比这 7 次全是 86% 与 56%，所以百分比写单值、未覆盖数写区间。
+> `-m api` 这一轮 3 次串行全部落在 **3664**（逐位相同），所以这一栏写单值。
+> 百分比这 9 次全是 86% 与 56%，所以百分比写单值、未覆盖数写区间。
 > 一旦某次它们逐位相同，就改回单值——判据是「重跑是否逐位相同」，不是「哪个好看」。
 > 批次 2 的 28 个文件**不进**这个分母：它自带 rootdir、`--cov=.` 只覆盖根仓库，
 > 且它的 `analyze/` `recorder/` `replay/` 都没有 `__init__.py`（靠 `conftest.py` 插 `sys.path` 导入）。
 
 > **`-m ui` 那一行是本次真的重跑过的**：命令是 `pytest -m ui -o addopts=`，
-> 结果是 `34 passed, 543 deselected in 21.62–33.70s`，退出码 0。收集数 34 条
-> （`pytest -m ui --collect-only -q -o addopts=` → `34/577 tests collected`）。
+> 结果是 `34 passed, 547 deselected in 33.36s`，退出码 0。收集数 34 条
+> （`pytest -m ui --collect-only -q -o addopts=` → `34/581 tests collected`）。
 > 这 34 条里，15 条（`testcases/ui/test_mes_web_app.py`）走 HTTP 层、**不申请 `page`
 > fixture、不起浏览器**；另外 19 条（`test_inventory.py` 8 条 / `test_login.py` 6 条 /
 > `test_mes_mixed_flow.py` 5 条）需要真实浏览器，打的是公共 demo 站
@@ -770,16 +805,17 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 早期本文件把同一批 error 归因成"沙箱禁止 asyncio 建命名管道（`_winapi.CreateNamedPipe`）"，
 > 那个归因不成立：那 19 条 error 逐条都能用"缺浏览器"复现，没有一条是那个原因。
 >
-> **覆盖率门禁挂在 `-m api` 上，而它现在有 56%（56.08%~56.10%），不是"全量"的 86%**：
+> **覆盖率门禁挂在 `-m api` 上，而它现在有 56%（55.92%），不是"全量"的 86%**：
 > 这两组的选取集**不再相同**（改造前它们恰好都是 92 条，所以旧文档里
 > "选取集完全相同"那句当时是对的，现在错了）。
-> 门禁定在 54：它要拦的是**退化**，不是卡住当前值（当前 56.08%，留约 2.1pp 余量）。
+> 门禁定在 54：它要拦的是**退化**，不是卡住当前值（当前 55.92%，留约 1.9pp 余量）。
 >
-> **当前值（2026-10-18，`--confcutdir` + `-- ` 之前落位这一棵树）**：`not ui` 分母 8450、未覆盖 1157–1164、**86%**；
-> `api` 分母 8271、未覆盖 3631–3633、**56%（56.08%~56.10%）**。分母从 8360 涨到 8450 是因为 `qaplat/paths.py`
-> 新增了 `confcutdir_args()`、`with_confcutdir()` 与两条采集通道的调用点，外加钉住这两件事的 6 条平台层用例——
-> 这些行只被平台层用例和端到端用例走到，所以 `-m api` 那一栏的未覆盖数同步从 3552 涨到 3633，
-> 百分比从 56.56% 掉到 56.08%。
+> **当前值（2026-10-18，含跨盘 nodeid 修复的这棵树）**：`not ui` 分母 8491、未覆盖 1161–1164、**86%**；
+> `api` 分母 8312、未覆盖 3664、**56%（55.92%）**。分母从 8450 涨到 8491 是因为 `qaplat/_dump.py`
+> 新增了 `_qualified_nodeid()` 与它在 `pytest_collection_modifyitems` 里的调用点，外加 4 条跨盘自测——
+> 这些行只被平台层用例和端到端用例走到，所以 `-m api` 那一栏的未覆盖数同步从 3633 涨到 3664，
+> 百分比从 56.08% 掉到 55.92%。（再往前一轮，8360 → 8450 是 `qaplat/paths.py` 的
+> `confcutdir_args()` / `with_confcutdir()` 与 6 条 `--confcutdir` 自测带进来的。）
 >
 > **以下为历史记录，分母已作废。** 它记的是"当时在某棵树上串行测了几次"，
 > 把里面的分母与未覆盖数换成新值就等于伪造记录，所以下面的数字原样保留，只作溯源用：

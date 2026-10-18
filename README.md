@@ -351,7 +351,10 @@ $env:TEST_ENV = "prod";    pytest -m api     # → data/config.prod.yaml
 > 而 `mes_server` 是 session 作用域 = 每个 worker 各起一个独立 mock server、各建一份 SQLite，
 > 于是两边都不自洽。注意行数一条不差，只有库存两个合计偏——所以别用"脏数据没清"去解释它。
 >
-> 所以 CI 里 `-m api` 那一步开 `-n 4 --dist loadfile`（实测串行 75.55–79.11s → 并行 38.00s，约 2.0–2.1×），
+> 所以 CI 里 `-m api` 那一步开 `-n 4 --dist loadfile`（三次不同批次实测：
+> 串行 75.55–79.11s → 并行 38.00s（约 2.0–2.1×）、串行 60.44–61.85s → 并行 25.75s、
+> 串行 71.70–74.03s → 并行 31.63s（约 2.3×）；**三轮的绝对值不可比**，机器负载与公网接口
+> 都在变，能比的只有同一轮内的比值，它稳定在 2.0–2.4×），
 > 而 `-m mes` / `-m login` / `-m ui` **刻意不开**，理由见"持续集成"一节。
 
 ### 口令与密钥
@@ -675,7 +678,9 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 
 ## 当前实测结果
 
-> 采集时间 **2026-10-15**（Windows 本机，Python 3.12.10，公网接口用例受网络影响会有波动）。
+> 采集时间 **2026-10-18**（Windows 本机，Python 3.12.10，公网接口用例受网络影响会有波动——
+> 同一套用例在两天里 `-m api` 分别量到 60.44–61.85s 与 71.70–74.03s，**下面这一栏的耗时读量级**，
+> 计数与覆盖率才是定值）。
 > **一个容易看错的点**：`api` 与 `mes`、`login` 三个标记有**重叠** ——
 > `testcases/mes/` 的用例同时打了 `mes` 和 `api`，`testcases/login/` 的同时打了
 > `login` 和 `api`。所以 `-m api` 选到 132 条（49 条接口目录 + 54 条 MES + 29 条登录），
@@ -688,23 +693,23 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 ```text
 pytest --collect-only -q                 577 tests collected
 
-pytest -m api                            132 passed, 445 deselected in 60.44–61.85s
-pytest -m mes                             64 passed, 513 deselected in 36.02s
-pytest -m login                           29 passed, 548 deselected in  3.03s
-pytest -m contract                       213 passed, 353 deselected, 11 xfailed in 18.32s
-pytest -m perf                             2 passed, 575 deselected in  5.40s
-pytest -m platform                       177 passed, 400 deselected in 25.29–25.85s
-pytest -m ui                             34 passed, 543 deselected in 21.62–22.42s（收集 34 条；浏览器已装好，全绿，见下）
+pytest -m api                            132 passed, 445 deselected in 71.70–74.03s
+pytest -m mes                             64 passed, 513 deselected in 37.60s
+pytest -m login                           29 passed, 548 deselected in  3.24s
+pytest -m contract                       213 passed, 353 deselected, 11 xfailed in 19.63s
+pytest -m perf                             2 passed, 575 deselected in  5.55s
+pytest -m platform                       177 passed, 400 deselected in 45.31s
+pytest -m ui                             34 passed, 543 deselected in 21.62–33.70s（收集 34 条；浏览器已装好，全绿，见下）
 
-cd traffic-replay; pytest                173 passed in 15.93s（批次 2，自带 pytest.ini）
+cd traffic-replay; pytest                173 passed in 17.57s（批次 2，自带 pytest.ini）
 
-pytest -m api -n 4 --dist loadfile       132 passed in 25.75s
-pytest -m mes -n 4 --dist loadfile        64 passed in 19.57s
+pytest -m api -n 4 --dist loadfile       132 passed in 31.63s（同一轮串行 74.03s，约 2.34×）
+pytest -m mes -n 4 --dist loadfile        64 passed in 20.72s（同一轮串行 37.62s，约 1.82×）
 CONTRACT_MAX_EXAMPLES=50 pytest -m contract
                                          213 passed, 11 xfailed in 53.77s  # 放大 6.25 倍样例，耗时 ×2.5
 
-pytest -m "not ui" -n 4 --cov=. --cov-report=term          TOTAL 8450 1156 86%
-pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8271 3633 56%（56.08%）
+pytest -m "not ui" --cov=. --cov-report=term               TOTAL 8450 1157–1164 86%
+pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8271 3631–3633 56%（56.08%~56.10%）
                                         Required test coverage of 54% reached（退出码 0）
 pytest -m mes --cov=mock_server --cov-report=term          TOTAL 1374 235 83%
 pytest -m login --cov=login_app --cov-report=term          TOTAL   88  13 85%
@@ -716,31 +721,41 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
                                         CI 上由 `test` job 里那一步执行，并由门禁脚本钉住
 ```
 
-> **上面这一块都是 2026-10-17 重跑的实测**，没有一行是从旧值推算的。基准树是本条提交的父提交
+> **上面这一块都是 2026-10-18 重跑的实测**，没有一行是从旧值推算的。基准树是本条提交的父提交
 > （即新增 `testcases/platform/test_dump_plugin.py` 之前的那棵树）；覆盖率与各层计数都在同一棵树上测。
-> 一个例外要说清：`passed` / `deselected` / 覆盖率都是**可复现的定值**（串行重跑逐位相同），
-> 但**耗时是单次观测**——`-m api` 与 `-m ui` 打公网，批次间能差十几秒（本轮两轮 `-m api` 61.85s ↔ 60.44s、
-> `-m ui` 21.85s ↔ 22.42s、`-m platform` 25.64s ↔ 25.85s，所以这三行写了区间）。所以耗时那一栏请读量级，门禁和判定从不依赖它。
+> 一个例外要说清：`passed` / `deselected` / 计数都是**可复现的定值**（串行重跑逐位相同），
+> 但**耗时是单次观测**——`-m api` 与 `-m ui` 打公网，批次间能差十几秒（10-17 那轮两轮 `-m api`
+> 61.85s ↔ 60.44s；10-18 这轮同一台机器上是 74.03s ↔ 71.70s，两天差了近 20%，
+> 所以这三行写了区间）。所以耗时那一栏请读量级，门禁和判定从不依赖它。
 > 前提：`$env:TMP` 必须指向一个**确实存在**的可写目录——那里不可写时 pytest 的 basetemp 会回落到仓根，
 > 它生成的 `.py` 会被 `--cov=.` 算进分母，分母就跟着漂。
+> **另一个已测到的前提**：`$env:TMP` 与仓库**不在同一个盘**时，`-m platform` 里
+> `test_collect_cases_features_a_second_file` 会挂 1 条——pytest 9.0.3 对 rootdir 之外的跨盘路径
+> 算不出相对路径，nodeid 的前缀会变成空串（dump 里是 `::test_probe_a`），
+> 断言与源码回溯都跟着失效。同盘（都在 D:）时 177 条全绿。这是环境前提，不是用例缺陷。
 > **marker 真的重叠，别做加法**：`-m api` 的 132 条 = `api and mes` 54 条 + `api and login` 29 条
 > + 只属接口目录的 49 条（`-m perf` 的 2 条就在这 49 条里）；另有 `mes and not api` 10 条。
 > 所以 132 = 49 + 54 + 29 这个加法成立，但 "49 + 54 + 29" 里的 54、29 已经分别被 `-m mes`、`-m login` 数过一遍。
 > 全量 577 = 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 177 平台层自测（这六组互不重叠，加法成立）。
 > **覆盖率两行同一个道理**：`--cov=.` 的分母里含 `qaplat/` 与 `mes_web/` 整目录，
-> 所以 `not ui` 是 8450 分母 / 未覆盖 1156 / **86%**（本轮串行三次全落在 1156），
-> 而只跑 `-m api` 的分母是 8271 / 未覆盖 3633 / **56%（56.08%）**。
+> 所以 `not ui` 是 8450 分母 / 未覆盖 1157–1164 / **86%**，
+> 而只跑 `-m api` 的分母是 8271 / 未覆盖 3631–3633 / **56%（56.08%~56.10%）**。
 > 两组的分母差 179 条，差的正是 `-m api` 摸不到的那些文件——所以两个百分比不可比，
 > 门禁挂在 `-m api` 上只能拿 56% 这一栏说事。
-> 这一栏在 3633 这一档：`-m api` 不 import `testcases/` 里的平台层用例，分母比 `not ui` 少 179 条，
+> 这一栏在 3631–3633 这一档：`-m api` 不 import `testcases/` 里的平台层用例，分母比 `not ui` 少 179 条，
 > 但那 179 条里有相当一部分是被 `-m api` 覆盖不到的模块，所以未覆盖行数反而更多。
-> `not ui` 那一栏此前写的是区间（两次差 1 行），本轮三次同一个数，所以改回单值；
-> 一旦某次抖动回来，这里还得写成区间——判据是「重跑是否逐位相同」，不是「哪个好看」。
+> **未覆盖那一栏是区间，这是判据不是美化**：10-17 与 10-18 两轮复测累计跑了 7 次
+> （`not ui` 串行 4 次、并行 `-n 4` 3 次；`-m api` 串行 2 次、并行 `-n 4` 2 次），
+> `not ui` 的未覆盖数落在 **1156–1164**、`-m api` 落在 **3631–3633**，
+> 而**分母 8450 / 8271 每一次都逐位相同**——跳的只是子进程里 `mock_server` 收尾落盘那几行
+> （原因见下面 `mock_server` 那一节）。
+> 百分比这 7 次全是 86% 与 56%，所以百分比写单值、未覆盖数写区间。
+> 一旦某次它们逐位相同，就改回单值——判据是「重跑是否逐位相同」，不是「哪个好看」。
 > 批次 2 的 28 个文件**不进**这个分母：它自带 rootdir、`--cov=.` 只覆盖根仓库，
 > 且它的 `analyze/` `recorder/` `replay/` 都没有 `__init__.py`（靠 `conftest.py` 插 `sys.path` 导入）。
 
 > **`-m ui` 那一行是本次真的重跑过的**：命令是 `pytest -m ui -o addopts=`，
-> 结果是 `34 passed, 543 deselected in 21.62–22.42s`，退出码 0。收集数 34 条
+> 结果是 `34 passed, 543 deselected in 21.62–33.70s`，退出码 0。收集数 34 条
 > （`pytest -m ui --collect-only -q -o addopts=` → `34/577 tests collected`）。
 > 这 34 条里，15 条（`testcases/ui/test_mes_web_app.py`）走 HTTP 层、**不申请 `page`
 > fixture、不起浏览器**；另外 19 条（`test_inventory.py` 8 条 / `test_login.py` 6 条 /
@@ -755,13 +770,13 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 早期本文件把同一批 error 归因成"沙箱禁止 asyncio 建命名管道（`_winapi.CreateNamedPipe`）"，
 > 那个归因不成立：那 19 条 error 逐条都能用"缺浏览器"复现，没有一条是那个原因。
 >
-> **覆盖率门禁挂在 `-m api` 上，而它现在有 56.08%，不是"全量"的 86%**：
+> **覆盖率门禁挂在 `-m api` 上，而它现在有 56%（56.08%~56.10%），不是"全量"的 86%**：
 > 这两组的选取集**不再相同**（改造前它们恰好都是 92 条，所以旧文档里
 > "选取集完全相同"那句当时是对的，现在错了）。
 > 门禁定在 54：它要拦的是**退化**，不是卡住当前值（当前 56.08%，留约 2.1pp 余量）。
 >
-> **当前值（2026-10-17，`--confcutdir` + `-- ` 之前落位这一棵树）**：`not ui` 分母 8450、未覆盖 1156、**86%**；
-> `api` 分母 8271、未覆盖 3633、**56%（56.08%）**。分母从 8360 涨到 8450 是因为 `qaplat/paths.py`
+> **当前值（2026-10-18，`--confcutdir` + `-- ` 之前落位这一棵树）**：`not ui` 分母 8450、未覆盖 1157–1164、**86%**；
+> `api` 分母 8271、未覆盖 3631–3633、**56%（56.08%~56.10%）**。分母从 8360 涨到 8450 是因为 `qaplat/paths.py`
 > 新增了 `confcutdir_args()`、`with_confcutdir()` 与两条采集通道的调用点，外加钉住这两件事的 6 条平台层用例——
 > 这些行只被平台层用例和端到端用例走到，所以 `-m api` 那一栏的未覆盖数同步从 3552 涨到 3633，
 > 百分比从 56.56% 掉到 56.08%。
@@ -1069,7 +1084,8 @@ qaplat 平台的 5 页 HTML 报表除了进 Artifacts，还会被 `pages` job �
 
 ### 并行、超时、定时与通知
 
-- **`-m api` 开 `-n 4 --dist loadfile`**（实测串行 75.55–79.11s → 并行 38.00s，约 2.0–2.1×）。
+- **`-m api` 开 `-n 4 --dist loadfile`**（同一轮内实测约 2.0–2.4×，绝对耗时随机器负载与公网波动；
+  三轮的原始数字见上方"关于 `-n` 并行"）。
   必须是 `loadfile`：默认的 `--dist load` 在改造前实测 `-m mes` → `30 passed, 1 error`（退出码 1），
   根因见上方"关于 `-n` 并行"。**注意那个失败并没有消失**——2026-10-17 复测是 1/4 通过，理由同上。
 - **`-m mes` / `-m login` / `-m ui` 刻意不开并行**，理由都基于实测：

@@ -20,14 +20,14 @@ pip install -r requirements.txt
 playwright install chromium
 
 # 4. 跑一遍确认环境是好的
-pytest -m "not ui" -q          # 期望 536 passed, 11 xfailed（`-m "not ui"` 收集 547 条，全仓 581 条）
+pytest -m "not ui" -q          # 期望 573 passed, 11 xfailed（`-m "not ui"` 收集 584 条，全仓 618 条）
 ```
 
 `setup.ps1` 把这四步包成了一个脚本，新机器上可以直接跑它。
 
 ---
 
-## 改代码前必须知道的五件事
+## 改代码前必须知道的六件事
 
 ### 1. 有两组用例钉的是"当前行为"，不是"正确行为"
 
@@ -87,7 +87,36 @@ $env:TEST_ENV = "prod"; pytest     # → data/config.prod.yaml
 加载器是 `common/config.py` 的 `get_config()`。**改动它时有一条硬约束**：
 `TEST_ENV` 未设置时的返回值必须与旧实现（`common/yaml_util.get_config()`
 直接读 `config.yaml`）逐字节一致。这条已经有回归保护——
-CI 里跑的就是默认档的 547 条用例（`-m "not ui"` 的收集数，全仓共 581 条）。
+CI 里跑的就是默认档的 584 条用例（`-m "not ui"` 的收集数，全仓共 618 条）。
+
+### 6. 覆盖率门禁有两道：仓库级 54% 与 **per-file 55%**，别只盯着前者
+
+```powershell
+# 第一道（仓库级，CI 里由 --cov-fail-under 判）
+pytest -m api -n 4 --dist loadfile --cov=. --cov-report=term `
+  --cov-report=json:.coverage.json --cov-fail-under=54
+
+# 第二道（per-file，读上面那份 JSON，不重跑测试）
+python scripts/check_coverage.py --report .coverage.json
+```
+
+为什么需要第二道：仓库级门槛按语句数加权平均，**结构上看不见单点失守**。
+一个模块整体掉到 0%，只要总量还高于 54，第一道就是绿的。本仓库的真实
+形状是 `qaplat/cli.py`（253 语句）在 `-m api` 口径下只有 13.8%，而当时
+没有任何门禁会提出异议。
+
+两条硬约束：
+
+1. **阈值是棘轮，不是目标。** `[tool.coverage.perfile]` 里的 `fail_under`
+   取「当前最差入选文件 - 若干 pp」，修完再抬，每轮只抬一次。看到红灯时
+   该做的是补测试，不是调低这个数字——本仓的 `ruff format` 曾经长期挂在
+   `continue-on-error: true` 下，就是这么废掉的。
+2. **`exclude` 里每条路径都必须真实存在**，脚本会验证。写错的排除等于
+   没写，但它**看起来**写了，这是最坏的一种假安全感。每条排除的理由都
+   写在 `pyproject.toml` 那一节里，加新条目时照这个规矩带上理由。
+
+覆盖率产物 `.coverage.json` 已在 `.gitignore` 里（`.coverage.*` 那条），
+不要提交它。
 
 ---
 

@@ -176,3 +176,50 @@ disable_error_code = ["list-item"]
 [[tool.mypy.overrides]]
 module = ["mock_server.idempotency", "mock_server.routers"]
 disable_error_code = ["exit-return", "arg-type"]
+
+# --------------------------------------------------------------------------- #
+# per-file 覆盖率门槛（本仓库自定义表，**coverage / pytest 都不读它**，只被
+# `scripts/check_coverage.py` 读）。
+#
+# 为什么需要它：CI 里的 `--cov-fail-under=54` 是**仓库级**的，按语句数加权
+# 平均。一个模块整体掉光，只要总量还高于 54，CI 就是绿的；反过来把一个大
+# 模块从 90% 拉到 98%，也能把另一个模块的崩塌补回来。
+#
+# 为什么门槛挂在 `-m api` 那条命令上，而不是 `-m "not ui"`：
+#   CI 里带 `--cov-fail-under` 的只有 `-m api` 这一步，覆盖率产物也只有它
+#   生成。把 per-file 门禁挂同一个产物，口径就与全局门槛逐字一致，不会出现
+#   「全局看 56%、per-file 看 86%」这种两套数字打架的局面。
+#
+# 为什么 exclude 掉六个目录（每条理由，见下）：
+#   在 `-m api` 这个口径下，只有 apis/ common/ mock_server/ login_app/
+#   与根 conftest.py 是"这组用例本该覆盖"的东西。其余目录属于别的测试层，
+#   在 api 口径下天然低 —— 把它们算进来只会逼人写"为了让覆盖率好看"
+#   的假用例，而那些用例反过来会掩盖真的退化。
+# --------------------------------------------------------------------------- #
+[tool.coverage.perfile]
+# 棘轮，不是目标值：门槛 = 当前最差入选文件 - 若干 pp，修完再抬，
+# 每轮只抬一次。看到红灯时该做的是补测试，不是把这个数字调低。
+fail_under = 55
+# 语句数低于此的文件不参与判定（一个 8 行的 __init__ 掉到 0% 没有信息量，
+# 但会让"参与判定的文件数"这个数字变得不可读）。
+min_statements = 20
+exclude = [
+  # 测试自己。`--cov=.` 会把 testcases/ 也统计进来，而"测试代码的覆盖率"
+  # 是一个循环定义：跑测试当然会执行测试文件本身。排除后剩下的才是产品代码。
+  "testcases/",
+  # Demo Web 服务：只被 UI 用例（`-m ui`）走到，而 `-m api` 不加载 UI 用例。
+  # 它在 api 口径下实测 0.0%（147 语句），不是没人测，是口径之外。
+  "mes_web/",
+  # 平台层（qaplat/）：由 `-m platform` 那 218 条用例覆盖，本机实测 91%。
+  # 同一个仓里它有自己的一整套门禁（gate_layers / registry / metrics_store），
+  # 再在 api 口径下按 per-file 判它，只会逼人写跨层的假用例。
+  "qaplat/",
+  # 平台层与运维脚本（scripts/）：由 `testcases/platform/test_scripts_*.py`
+  # 覆盖，同样属于 `-m platform` 这一层。
+  "scripts/",
+  # 一次性工具（tools/install_chromium.py 等）：由它自己的平台层用例覆盖，
+  # 且正常运行路径依赖外部下载，不适合进 CI 的覆盖率判定。
+  "tools/",
+  # UI page object（ui/pages/*）：只被 `-m ui` 走到。
+  "ui/",
+]

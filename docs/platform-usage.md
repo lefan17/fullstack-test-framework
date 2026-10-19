@@ -27,7 +27,7 @@ $py = '.\.venv\Scripts\python.exe'
 ```
 
 依赖先装好（`pip install -r requirements.txt`，要复现 CI 的完整树就 `-r requirements.lock`），
-之后全仓收集即为完整数量（契约 224 + 其余各层，合计 581 条）。
+之后全仓收集即为完整数量（契约 224 + 其余各层，合计 618 条）。
 
 > **2026-10 订正**：本节原写「schemathesis 并不在 venv 的 site-packages 里，它放在仓库外的
 > `work/pylibs` 目录」，并给出「不带 PYTHONPATH 收集 317 条 + 1 个收集期 ERROR、带上才是 505 条」。
@@ -35,7 +35,7 @@ $py = '.\.venv\Scripts\python.exe'
 > 实测：`python -m pip show schemathesis` → `Location: …\.venv\Lib\site-packages`；
 > 不带任何 PYTHONPATH 的 `python -m pytest --collect-only -q` = `507 tests collected`
 > （这是 2026-10 那次订正时的时点值；此后平台层与三个脚本契约用例补齐、采集插件分类自测补齐、
-> 跨盘 nodeid 修复自测补齐，当前为 581 条）。
+> 跨盘 nodeid 修复自测补齐，当前为 618 条）。
 
 `qaplat` 包本身**不**设置也不硬编码 PYTHONPATH——那是环境的责任，藏在包里会让人以为
 `pip install -r requirements.txt` 就够。CI 里用真实 `pip install` 装依赖，所以 CI 也不需要这步。

@@ -312,9 +312,12 @@ jobs:
         # 已经在上面那一步跑过了。
         # --cov= 后面跟空值是关掉自动生成的 HTML/XML 子报告，
         # 报告格式由 --cov-report=term 单独指定，避免往工作区里写垃圾。
+        # json 那一份是给下一步的 per-file 门禁读的：它复用同一个覆盖率产物，
+        # 不重跑测试，所以口径与 `--cov-fail-under` 逐字一致（不会出现
+        # 「全局看 56%、per-file 看 86%」两套数字打架）。
         run: |
           pytest -m api -n 4 --dist loadfile \
-            --cov=. --cov-report=term --cov-report= \
+            --cov=. --cov-report=term --cov-report=json:.coverage.json --cov-report= \
             --cov-fail-under=54 \
             --alluredir=allure-results
         env:
@@ -323,14 +326,14 @@ jobs:
           MAX_RESPONSE_MS: "8000"
 
       # 覆盖率门禁的数字来源：本机在这条命令上**串行实测两次** →
-      # `TOTAL 8312 / 未覆盖 3664 / 56%`（55.92%）。这一栏有运行间摆动
+      # `TOTAL 8489 / 未覆盖 3779 / 55%`（55.48%）。这一栏有运行间摆动
       # （同一份代码同机也会变，最多见过 6 条），所以判断只看百分比、不抠那几个数值。
       # 门禁取 54，留约 2.1pp 余量。
       #
       # ⚠️ 阈值是量出来的，不是拍的，也不能沿用历史推算值：
       #   - 本文件早前记的 78.87% / 88.90% 是更早树状态的实测，早就作废。
       #   - 36c1cc5 那棵树上是 61.27%（分母 7095 / 未覆盖 2748）。
-      #   - 现在同一命令是 55.92%（分母 8312 / 未覆盖 3664）。`--cov=.` 把仓库
+      #   - 现在同一命令是 55.48%（分母 8489 / 未覆盖 3779）。`--cov=.` 把仓库
       #     **全文**算进分母，而 `-m api` 只跑接口那 132 条，摸不到新增文件。
       #   - 上一轮那次测量时，分母 7095 -> 8064 涨了 969 条（两个数都是量出来的）。能逐文件对上的是
       #     36c1cc5..HEAD 新增的 5 个 .py 共 631 条（`coverage.parser.PythonParser` 量出）
@@ -340,7 +343,7 @@ jobs:
       #     `test_scripts_install_chromium.py` +143、`test_scripts_mes_data_ttl.py` +171、
       #     `test_scripts_report_to_zentao.py` +154。这是分母上涨的主因。
       #   - 结论不变：拿 61.27% 时代的口径写 58 会让这一步当场红。
-      #     按当前实测 55.92% 留约 1.9pp 余量，取 54。
+      #     按当前实测 55.48% 留约 1.5pp 余量，取 54。
       #
       # 为什么不贴着实测值设：这个数字里有相当一部分来自公网接口用例本身，
       # 在 runner 上会抖动；门禁的意义是"拦住覆盖率**退化**"，不是"卡住当前值"。
@@ -367,6 +370,27 @@ jobs:
       #      `-m login --cov=login_app` 由 31% 升到 **85%**（run.py 0% → 100%）。
       #   4. 上一版注释写的"这一块的真实盲区没有被消掉"**已经不成立**：
       #      原结论是"子进程不记账"，而真相是"记账了但没落盘"（被强杀，跑不到 atexit）。
+
+      # per-file 覆盖率门禁：拦住「单个模块整体失守」。
+      #
+      # 为什么需要独立一步：上面那个 `--cov-fail-under=54` 是**仓库级**的，
+      # 按语句数加权平均。一个模块整体掉光，只要总量还高于 54，CI 就是绿的
+      # —— 这正是本仓库真实发生过的形状：`qaplat/cli.py`（253 语句）在
+      # `-m api` 口径下只有 13.8%，而全局门禁对此一无所知。
+      #
+      # 为什么它读上一档的 JSON 而不是自己再跑一次：重跑一遍覆盖率要么多花
+      # 100 秒，要么用一个更小的子集算出**另一套数字**——那时候「全局 56%、
+      # per-file 86%」就会同时出现在两份报告里，谁也说不清哪个才算数。
+      # 读同一份产物，两个门禁的输入逐字相同。
+      #
+      # 为什么配置住在 pyproject.toml 的自定义表里：coverage 7.16.2 **没有**
+      # per-file 的 fail_under（`CoverageConfig` 里只有全局那一个），所以
+      # 只能自己判。配置与理由都写在 `[tool.coverage.perfile]` 旁边。
+      #
+      # 阈值是棘轮不是目标：看到红灯时该做的是补测试，不是调低这个数字。
+      - name: per-file 覆盖率门禁（拦单点失守）
+        if: always()
+        run: python scripts/check_coverage.py --report .coverage.json
 
       # UI 用例打的是公共 demo 站，外部因素多，失败不阻断流水线。
       # 但这不等于可以放着不管：报告和截图照样产出，需要人去看。
@@ -421,11 +445,11 @@ jobs:
 
       # qaplat 平台层自测：被测对象是**平台自己**——registry 的用例/operation 归属、
       # metrics_store 的落盘格式、gate_layers 的门禁分层、drift_report_cli 的命令行契约，
-      # 实测 181 条（testcases/platform/ 下 10 个测试文件 + `__init__.py`）。
-      # 它必须独立成 step，理由与上面的 contract 那一步同理：这 181 条
+      # 实测 218 条（testcases/platform/ 下 11 个测试文件 + `__init__.py`）。
+      # 它必须独立成 step，理由与上面的 contract 那一步同理：这 218 条
       # **完全落在宿主层之外**——`-m "platform and (api or ui or mes or login or contract or perf)"`
       # 的收集数是 0，所以 `-m api` / `-m mes` / `-m login` 三步一条都跑不到它。
-      # 没有这一步，这 181 条在 CI 上永远不会被执行（改前实测：本文件全文没有
+      # 没有这一步，这 218 条在 CI 上永远不会被执行（改前实测：本文件全文没有
       # `platform` 字样），平台层会静默腐烂——而门禁脚本 check_gate_policy.py 自己
       # 就住在 scripts/ 下、由 qaplat 平台层提供分层与归属判定，它坏了没人知道。
       # 不设 continue-on-error：平台层红了就是真坏了，必须拦住流水线。
@@ -605,7 +629,7 @@ jobs:
             python -m coverage report --skip-covered --skip-empty >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "> 门禁值 54%（本组实测 55.92%，未覆盖 3664 条语句）。" >> "$GITHUB_STEP_SUMMARY"
+            echo "> 门禁值 54%（本组实测 55.48%，未覆盖 3779 条语句）。" >> "$GITHUB_STEP_SUMMARY"
             echo "> \`mock_server/*\` 的数字**已经包含**由 fixture 拉起的真服务子进程（波 2 · P1-3）。" >> "$GITHUB_STEP_SUMMARY"
             echo "> 服务经 scripts/service_launcher.py 启动并优雅退出，coverage 分片由 pytest-cov 自动 combine。" >> "$GITHUB_STEP_SUMMARY"
           fi

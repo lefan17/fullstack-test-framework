@@ -137,7 +137,12 @@ def test_started_at_survives_roundtrip_as_utc(store: MetricsStore) -> None:
     )
     back = store.recent_runs()[0]
     assert back.started_at.tzinfo is not None
-    assert back.started_at.utcoffset() == pytest.approx(__import__("datetime").timedelta(0))
+    # 必须显式给容差：pytest 9.1.0 起 approx() 对 datetime/timedelta 不再有默认值
+    # （_pytest/python_api.py 抛 "requires an explicit tolerance"）。abs=0 表达的是
+    # 「偏移必须正好是 0」，比给一个有量级的容差更贴这条断言的意图。
+    assert back.started_at.utcoffset() == pytest.approx(
+        __import__("datetime").timedelta(0), abs=__import__("datetime").timedelta(0)
+    )
 
 
 def test_recent_runs_newest_first_and_limited(store: MetricsStore) -> None:

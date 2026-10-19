@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 # === 核心测试框架 ===
-# pytest 取 9.0.3：PYSEC-2026-1845（CVE-2025-71176）的修复版本正是 9.0.3
-# （advisory 原文 "pytest through 9.0.2 ... /tmp/pytest-of-{user}"），8.x 全系都带这个洞。
-# 8.x 曾经是被 schemathesis 3.39.16 的 `pytest<9,>=4.6.4` 卡住的；4.31.1 声明
+# pytest 取 9.1.1。下界由安全通告决定：PYSEC-2026-1845（CVE-2025-71176）的修复版本是
+# 9.0.3（advisory 原文 "pytest through 9.0.2 ... /tmp/pytest-of-{user}"），8.x 全系都带
+# 这个洞。8.x 曾经是被 schemathesis 3.39.16 的 `pytest<9,>=4.6.4` 卡住的；4.31.1 声明
 # `pytest<10,>=8.4`，这条约束随之解除。
 # 9.1.x 的坑：9.1.0 起 pytest.approx() 对 datetime/timedelta 强制要求显式容差
 # （_pytest/python_api.py 抛 "requires an explicit tolerance"）。全仓只有一处踩到
 # （testcases/platform/test_metrics_store.py:140 的 approx(timedelta(0))），
-# 已在本轮改成 approx(timedelta(0), abs=timedelta(0))，所以 9.1.1 可以升。
-# 9.0.3 → 9.1.1 都是 patch/minor，行为差异仅此一处（本机全量实测通过）。
+# 已改成 approx(timedelta(0), abs=timedelta(0))，所以 9.1.1 可以升。
+# 9.0.3 → 9.1.1 都是 patch/minor，已知行为差异仅此一处（本机全量实测通过）。
 pytest==9.1.1
 pytest-html==4.2.0
 allure-pytest==2.13.5

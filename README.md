@@ -75,7 +75,7 @@ commit 与工作副本路径。保留是为了追溯「当时为什么这么做�
 
 | 用途 | 选型 |
 |---|---|
-| 测试框架 | pytest 8 + pytest-xdist（并行）+ pytest-cov（覆盖率门禁） |
+| 测试框架 | pytest 9.1 + pytest-xdist（并行）+ pytest-cov 6.3（覆盖率门禁，**卡在 6.x**） |
 | 接口测试 | requests + jsonschema + PyYAML |
 | UI 测试 | Playwright 1.48（sync API） |
 | Mock 后端 | FastAPI + SQLite（WAL 模式），仅测试用 |
@@ -763,13 +763,14 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 与 36.95s→17.97s（2.06×）——**不要拿不同批次的两个数凑比**，那会算出根本不存在的"提速"。
 > 前提：`$env:TMP` 必须指向一个**确实存在**的可写目录——那里不可写时 pytest 的 basetemp 会回落到仓根，
 > 它生成的 `.py` 会被 `--cov=.` 算进分母，分母就跟着漂。
-> **跨盘那个坑已经修了（2026-10-18）**：`$env:TMP` 与仓库**不在同一个盘**时，pytest 9.0.3 对
+> **跨盘那个坑已经修了（2026-10-18）**：`$env:TMP` 与仓库**不在同一个盘**时，pytest 对
 > rootdir 之外的跨盘路径算不出相对路径（`bestrelpath` 的 `commonpath` 抛 `ValueError`），
 > nodeid 的前缀会变成空串（dump 里是 `::test_probe_a`），`registry` 靠前缀读源码那一步跟着失效。
 > 现在由采集插件 `qaplat/_dump.py::_qualified_nodeid` 在收集期用 `item.path` 把前缀补回来，
 > 被改过的 nodeid 记在 dump 的 `renamed` 字段里（正常收集时为空）。**修前**跨盘 `-m platform`
 > 挂 1 条、同盘 177 全绿；**修后**两种盘符下都是全绿（当时 **181 passed**，多出的 4 条就是这次
-> 补的跨盘自测）。
+> 补的跨盘自测）。**pytest 9.1.1 上仍有效**：本轮升级后重跑 `-m platform` 是 230 passed，
+> 且 `$TMP` 恰好在 C 盘、仓库在 D 盘（跨盘状态），说明补前缀逻辑没有随 pytest 内部调整而失效。
 > 这个修复不是为了「让某台机器变绿」——空前缀会让 `referenced_paths` 整条来源静默归零，
 > 报表上表现为「这条用例没覆盖任何接口」，而它其实覆盖了；那是个会算错覆盖率的缺陷。
 > **marker 真的重叠，别做加法**：`-m api` 的 132 条 = `api and mes` 54 条 + `api and login` 29 条
@@ -854,6 +855,16 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 进程走到 `atexit`、分片落盘；`stop()` 同时改成先礼后兵（优雅信号 → `terminate()` → `kill()`）。
 > 分片（`.coveragerc` 的 `[run] parallel = true`）由 pytest-cov 在 session 结束时**自动 combine**，
 > 不需要手工 `coverage combine`，也不需要 `-m coverage run --parallel-mode`。
+>
+> **pytest-cov 必须停在 6.x（升到 7.x 这条链路整片归零）**：上面这套子进程采集全靠
+> 7.0.0 之前才有的两个文件——`pytest_cov/embed.py` 与 `site-packages/pytest-cov.pth`。
+> 后者在每个解释器启动时读 `COV_CORE_SOURCE`，命中就调 `embed.init()` 起一个后台采集线程、
+> 退出时写分片。7.0.0 起两个文件都被移除（实测 7.1.0 的 wheel 只剩 `__init__`/`engine`/`plugin`），
+> 于是子进程里的覆盖**一条都收不到**，表现为 `mock_server/` 11 个文件全 0%。
+> 实测对照：装上 7.1.0 后 `pytest -m mes --cov=mock_server` 从 **83% → 0%**，
+> `testcases/mes/test_coverage_collection.py` 直接红。所以 `.github/dependabot.yml` 里
+> 对 `pytest-cov >= 7.0.0` 加了 ignore——这不是「暂时不想升」，是「升上去就丢能力」。
+> 而 `pytest_cov 6.3.0` 声明 `pytest>=6.2.5`（无上限），与 pytest 9.1.1 兼容。
 >
 > 实测（本机）：`-m mes --cov=mock_server` → TOTAL **9% → 83%**
 > （`routers.py` 0% → 84%、`services.py` 0% → 70%、`deps.py` 0% → 82%、`app.py` 0% → 90%）；

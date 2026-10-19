@@ -50,6 +50,16 @@ updates:
       playwright:
         patterns:
           - "playwright*"
+    # 刻意不追的升级：pytest-cov 必须停在 6.x。
+    # 7.0.0 起 wheel 里没有 embed.py 与 pytest-cov.pth，`COV_CORE_*` 子进程埋点
+    # 整条通道消失 —— 实测装 7.1.0 后 `pytest -m mes --cov=mock_server` 会从 83%
+    # 掉成 0%，testcases/mes/test_coverage_collection.py 直接红。
+    # 这条不是「暂时不想升」而是「升上去就丢能力」，所以从提醒里摘掉，
+    # 否则它每周都会重开一个必然要关掉的 PR，把真正可升的提醒淹掉。
+    # 解除条件：上游把 embed 通道加回来，或本仓库放弃子进程覆盖率采集。
+    ignore:
+      - dependency-name: "pytest-cov"
+        versions: [">=7.0.0"]
     labels:
       - dependencies
       - python

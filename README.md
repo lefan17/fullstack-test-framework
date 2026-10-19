@@ -546,6 +546,9 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 > 再给跨盘 nodeid 补前缀这处修复补 4 条自测后是
 > **581** 条收集 / **554** 条无编号（contract 224、platform **181**、mes 64、api 49、ui 34、login 2）；
 > 再给 per-file 覆盖率脚本补 37 条契约用例（新增 `test_check_coverage_script.py`，一个分支一个用例）后是
+> **618** 条收集 / **591** 条无编号（contract 224、platform **218**、mes 64、api 49、ui 34、login 2）；
+> 最后给 `perf/run_load.py` 的两处传输层缺陷补 12 条平台用例（连接失败要如实返回、
+> 代理不能劫持本机请求）后是
 > **630** 条收集 / **603** 条无编号（contract 224、platform **230**、mes 64、api 49、ui 34、login 2）
 > ——上表那一行就是最后这组。**脚本的原始输出才是权威**：
 > README 只钉"有编号的 30 / 27"这一组，它与装了哪些依赖、树里有哪些文件都无关，不会漂。
@@ -726,9 +729,9 @@ pytest -m api                            132 passed, 486 deselected in 72.51–8
 pytest -m mes                             64 passed, 554 deselected in 41.81–42.80s
 pytest -m login                           29 passed, 589 deselected in  3.44s
 pytest -m contract                       213 passed, 394 deselected, 11 xfailed in 20.47s
-pytest -m perf                             2 passed, 616 deselected in  5.21s
+pytest -m perf                             2 passed, 628 deselected in  5.21s
 pytest -m platform                       230 passed, 400 deselected in 49.58s
-pytest -m ui                             34 passed, 584 deselected in 38.31s（浏览器已装好，全绿，见下）
+pytest -m ui                             34 passed, 596 deselected in 38.31s（浏览器已装好，全绿，见下）
 
 cd traffic-replay; pytest                173 passed in 17.57s（批次 2，自带 pytest.ini）
 
@@ -737,7 +740,7 @@ pytest -m mes -n 4 --dist loadfile        64 passed in 21.50–21.80s（同轮�
 CONTRACT_MAX_EXAMPLES=50 pytest -m contract
                                          213 passed, 11 xfailed in 53.77s  # 放大 6.25 倍样例，耗时 ×2.5
 
-pytest -m "not ui" --cov=. --cov-report=term               TOTAL 8916 1177–1183 87%
+pytest -m "not ui" --cov=. --cov-report=term               TOTAL 8916 1181 87%
 pytest -m api -n 4 ... --cov-fail-under=54                 TOTAL 8597 3847 55%（55.25%）
                                         Required test coverage of 54% reached（退出码 0）
 pytest -m mes --cov=mock_server --cov-report=term          TOTAL 1374 235 83%
@@ -793,7 +796,7 @@ python tools/check_retry.py             23/23 通过，退出码 0（原 12 条 
 > 且它的 `analyze/` `recorder/` `replay/` 都没有 `__init__.py`（靠 `conftest.py` 插 `sys.path` 导入）。
 
 > **`-m ui` 那一行是本次真的重跑过的**：命令是 `pytest -m ui -o addopts=`，
-> 结果是 `34 passed, 584 deselected in 33.36s`，退出码 0。收集数 34 条
+> 结果是 `34 passed, 596 deselected in 33.36s`，退出码 0。收集数 34 条
 > （`pytest -m ui --collect-only -q -o addopts=` → `34/630 tests collected`）。
 > 这 34 条里，15 条（`testcases/ui/test_mes_web_app.py`）走 HTTP 层、**不申请 `page`
 > fixture、不起浏览器**；另外 19 条（`test_inventory.py` 8 条 / `test_login.py` 6 条 /

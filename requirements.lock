@@ -39,7 +39,7 @@ coverage==7.16.2
     # via pytest-cov
 execnet==2.1.2
     # via pytest-xdist
-fastapi==0.143.0
+fastapi==0.143.2
     # via -r requirements.txt
 graphql-core==3.2.13
     # via hypothesis-graphql

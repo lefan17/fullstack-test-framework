@@ -8,7 +8,7 @@
 # （_pytest/python_api.py 抛 "requires an explicit tolerance"），会让 testcases/platform/
 # test_metrics_store.py:140 的既有断言 TypeError 失败；该文件不在本次迁移边界内。
 # 9.0.3 既能堵上这个洞，也不动既有用例。
-pytest==9.0.3
+pytest==9.1.1
 pytest-html==4.2.0
 allure-pytest==2.13.5
 pytest-xdist==3.8.0

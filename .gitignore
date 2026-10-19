@@ -78,3 +78,5 @@ qaplat/.cache/
 # `.tmp/mes_web/mes_web-<port>.log`。上面那条 `.tmp/` 是宽泛规则，已被收窄过一次；
 # 这里按目录显式再列一遍，免得将来有人把 `.tmp/` 改成只忽略子项时把日志漏出去。
 .tmp/mes_web/
+.coverage.json
+.cov-check.json

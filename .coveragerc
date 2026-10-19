@@ -12,3 +12,21 @@
 # 每个进程各写一份 .coverage.<主机>.<pid>.X<随机> 分片，而不是所有进程去覆盖同一个
 # .coverage。这是子进程覆盖率能落盘的前提：分片互不覆盖，父进程最后 combine 成一份。
 parallel = true
+
+# 压测编排器（perf/run_load.py）不是被测代码，是驱动 locust 的运维脚本：
+# 起服务、回收进程、调 locust、解析 CSV、算拐点。pytest 套件不会执行它，
+# 它的一百多行 subprocess 编排也没有可单测的形状（要么装 locust，要么写一堆
+# mock 替身去测 mock）。
+#
+# 为什么必须在这里 omit、而不只在 `[tool.coverage.perfile]` 里 exclude：
+# 两个开关管的是两件事。perfile 的 exclude 只影响「哪些文件参与逐文件判定」，
+# **不影响 `--cov=.` 的 TOTAL**。只做前者的话，报告末尾会出现一句
+# 「TOTAL 9261 1661 82%」—— 分母里混进了一份从未被 pytest 执行的脚本，
+# 于是"项目覆盖率"这个对外承诺的数字，会因为我给一个运维脚本补了几条传输层
+# 用例而凭空掉 5 个百分点。数字掉了不是问题，**掉得没有道理**才是问题：
+# 它会让下一个人去追一个不存在的覆盖率回归。
+#
+# 与 `pyproject.toml` 的 `[tool.coverage.perfile] exclude` 里的 "perf/" 是
+# 同一决定的两半，改一处必须同时改另一处。
+omit =
+    perf/*

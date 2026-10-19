@@ -190,7 +190,9 @@ disable_error_code = ["exit-return", "arg-type"]
 #   生成。把 per-file 门禁挂同一个产物，口径就与全局门槛逐字一致，不会出现
 #   「全局看 56%、per-file 看 86%」这种两套数字打架的局面。
 #
-# 为什么 exclude 掉六个目录（每条理由，见下）：
+# 为什么 exclude 掉这些目录（每条理由，见下——2026-10-19 加 perf/ 时从"六个"
+# 改成不写死数字：这类清单一旦写死，下次加一条就得记得改描述，而它恰恰是
+# 最容易漏改的地方）：
 #   在 `-m api` 这个口径下，只有 apis/ common/ mock_server/ login_app/
 #   与根 conftest.py 是"这组用例本该覆盖"的东西。其余目录属于别的测试层，
 #   在 api 口径下天然低 —— 把它们算进来只会逼人写"为了让覆盖率好看"
@@ -222,4 +224,17 @@ exclude = [
   "tools/",
   # UI page object（ui/pages/*）：只被 `-m ui` 走到。
   "ui/",
+  # 压测编排器（perf/run_load.py）：它**不是被测代码**，是驱动压测的运维脚本，
+  # 由 CI 的 `perf` job 与人工执行，pytest 套件不运行它。
+  #
+  # 这一点在 2026-10-19 之前是"隐形的"：没人 import 它，它就不参与判定。
+  # 当天给它的 HTTP 传输层补了 12 条平台用例（`test_perf_run_load_http.py`），
+  # 它才第一次出现在判定表里，显示 25.8%（345 语句）—— 剩下的 300 余行是
+  # 起服务/回收进程/调 locust/解析 CSV/算拐点，没有 locust 装不进来，
+  # 硬写单元测试只会造出一堆 mock 替身的假用例。
+  #
+  # 与 scripts/、tools/ 同一口径：由自己的执行路径验证，不在 api 口径下判。
+  # 注意**传输层那部分是真有测试的**，排除不等于不管 —— 理由写在
+  # `testcases/platform/test_perf_run_load_http.py` 的模块 docstring 里。
+  "perf/",
 ]

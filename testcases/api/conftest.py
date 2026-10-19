@@ -45,23 +45,48 @@ def perf_base_url(perf_server: MockServer) -> str:
 
 @pytest.fixture(scope="session")
 def perf_token(perf_base_url: str) -> str:
-    """换令牌。登录接口本身不在基线里——它的耗时含密码哈希，与查询性能无关。"""
+    """换令牌。登录接口本身不在基线里——它的耗时含密码哈希，与查询性能无关。
+
+    这里也走 ``trust_env = False`` 的会话，理由与 ``perf_session`` 相同：
+    登录虽然只发生一次、不进分位，但它是整条采样链路的**前置条件**——
+    代理配置严一点（拒绝 CONNECT 到 127.0.0.1）就会让整组用例在 setup 阶段
+    红掉，报错指向登录而不是代理，排查方向从一开始就是错的。
+    """
     from common.secrets import role_password, role_username
 
     username = role_username(ADMIN_ROLE)
-    response = requests.post(
-        f"{perf_base_url}/auth/login",
-        json={"username": username, "password": role_password(ADMIN_ROLE)},
-        timeout=15,
-    )
+    with requests.Session() as client:
+        client.trust_env = False
+        response = client.post(
+            f"{perf_base_url}/auth/login",
+            json={"username": username, "password": role_password(ADMIN_ROLE)},
+            timeout=15,
+        )
     assert response.status_code == 200, f"性能基线的服务登不进去：{response.status_code} {response.text[:200]}"
     return str(response.json()["access_token"])
 
 
 @pytest.fixture(scope="session")
 def perf_session(perf_token: str) -> Iterator[requests.Session]:
-    """带连接池的会话。基线里所有端点共用它，测的才是稳态复用连接下的延迟。"""
+    """带连接池的会话。基线里所有端点共用它，测的才是稳态复用连接下的延迟。
+
+    **必须显式 ``trust_env = False``。** 默认的 ``requests.Session`` 会读
+    ``HTTP_PROXY`` / ``HTTPS_PROXY``，把发往 ``127.0.0.1`` 的采样请求交给代理。
+    实测（2026-10-19，本机导出 ``HTTP_PROXY=http://127.0.0.1:7897``）：
+
+        未禁用：P50 15.4ms / P95 30.1ms → 6 个端点全部超出预算，用例红
+        trust_env=False：P50 2.8ms  → 2 passed in 4.20s
+
+    也就是说这份「性能基线」在没有这行时量的是**代理的转发延迟**。它不一定每次
+    都红——代理空闲时 30ms 可能刚好还在预算内——于是一个受环境摆布的用例会变成
+    偶发红，而偶发红通常被当成"机器慢"，不该被修的根因就此长期潜伏。
+
+    采样测的东西必须只由被测服务决定：环境里有代理是开发机的常态，
+    让"本机服务"绕代理一圈既不必要也不正确。
+    """
     session = requests.Session()
+    # 不吃任何 *_PROXY 环境变量：采样目标恒为 127.0.0.1，直连是唯一正确路径。
+    session.trust_env = False
     session.headers.update({"Authorization": f"Bearer {perf_token}"})
     yield session
     session.close()

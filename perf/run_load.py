@@ -213,23 +213,61 @@ def _pythonpath(existing: str) -> str:
     return os.pathsep.join(parts)
 
 
+# 「连不上」的哨兵状态码。用它而不是 0：0 不是一个可能被服务返回的 HTTP 状态，
+# 出现在日志里一眼就能认出这是本地传输层失败，不是服务回了个奇怪的东西。
+_CONN_FAILED = 0
+
+# **显式禁用代理**，不要依赖调用者的环境变量。
+#
+# `urllib.request.urlopen` 默认会读 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`，
+# 并把请求交给代理。这里打的是 `127.0.0.1`——本该直连——经代理绕一圈有两个后果：
+#   1. 连不上时代理回自己的 502，于是「服务还没就绪」被误判成「服务回了 502」，
+#      就绪探测白等到 60 秒超时；
+#   2. 更要紧的是压测本身：locust 的请求同样经 `requests` 读环境变量，P95 里
+#      量到的是代理的转发延迟，不是被测服务的处理能力——一份被代理污染的容量结论
+#      比没有结论更危险。
+# 用空 ProxyHandler 覆盖掉环境里的设置，让「打本机」这件事在任何机器上都等价。
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def _http_get(url: str, timeout: float = 3.0) -> tuple[int, str]:
+    """GET 一个本机 URL，**把「连不上」也变成返回值而不是异常**。
+
+    为什么必须吃掉 `URLError`：`_start_service()` 用「能不能打通 /readyz」当就绪信号，
+    而它的第一次探测**几乎必然**打在 uvicorn 还没 bind 端口的那一刻。此时
+    `urlopen` 抛的是 `URLError(ConnectionRefusedError)`，而 `URLError` 与 `HTTPError`
+    是父子关系（`HTTPError` 是 `URLError` 的子类），只 catch `HTTPError` 的话这个
+    "正常竞态"会以未捕获异常的形式炸掉整个压测。
+
+    这不是假想缺陷：`perf` job 的 `if` 只放行 `workflow_dispatch` / `schedule`，
+    在 push/PR 上一直被 skip，所以这段代码在 CI 里**从来没有真正执行过**——
+    第一次手动触发就撞上了它。
+    """
     req = urllib.request.Request(url, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # URL 只指向本机被测服务
+        with _OPENER.open(req, timeout=timeout) as resp:  # URL 只指向本机被测服务
             return int(resp.status), resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
+        # 服务确实回了响应，只是状态码是 4xx/5xx。这是**有效信号**，要如实返回。
         return int(exc.code), exc.read().decode("utf-8", "replace")
+    except urllib.error.URLError as exc:
+        # 连不上 / 超时 / DNS 失败。就绪探测把它当「还没起来，继续等」；
+        # 调用方看到 `_CONN_FAILED` 就知道该重试而不是该解析 body。
+        return _CONN_FAILED, f"{type(exc.reason).__name__}: {exc.reason}"
 
 
 def _http_post_json(url: str, payload: dict[str, Any], timeout: float = 10.0) -> tuple[int, str]:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # URL 只指向本机被测服务
+        with _OPENER.open(req, timeout=timeout) as resp:  # URL 只指向本机被测服务
             return int(resp.status), resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return int(exc.code), exc.read().decode("utf-8", "replace")
+    except urllib.error.URLError as exc:
+        # 这里**不静默**：POST 的调用方（预热令牌、下发场景）在连不上时没有任何
+        # 合理的继续路径，早失败比拿一个 _CONN_FAILED 继续往下跑更诚实。
+        raise RuntimeError(f"POST {url} 连接失败：{type(exc.reason).__name__}: {exc.reason}") from exc
 
 
 def _start_service(python: str, port: int, api_prefix: str, out_dir: Path) -> ServiceHandle:
@@ -418,6 +456,22 @@ def _run_one(
     # 在中文 Windows 上会用 GBK 解码 UTF-8 的注释而崩（exit=2）。
     # 不修这个就只能靠调用者记得 `$env:PYTHONUTF8=1`，而那种约定迟早被忘。
     env["PYTHONUTF8"] = "1"
+    # **把代理变量从子进程环境里摘掉**，理由同 `_OPENER`：locust 底下的 `requests`
+    # 会读 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`，把本该直连 127.0.0.1 的
+    # 压测请求交给代理。那样 P95 里量到的是代理转发延迟，不是服务处理能力。
+    # 环境里有代理是常态（开发机几乎都有），所以这件事必须由脚本保证，不能靠运气。
+    for _proxy_key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        env.pop(_proxy_key, None)
+    # requests 认这个变量；给空串等于强制直连，比"删干净"更能挡住父进程再注入。
+    env["NO_PROXY"] = "*"
+    env["no_proxy"] = "*"
     env["PYTHONIOENCODING"] = "utf-8"
     env["LOAD_TOKEN_POOL"] = json.dumps(token_pool)
     env["LOAD_API_PREFIX"] = prefix

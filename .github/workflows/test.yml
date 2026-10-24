@@ -994,19 +994,22 @@ jobs:
           path: qaplat/.cache/
 
       - name: 校验度量库就位（拿不到时降级但留下线索）
+        # 这一步只做诊断与自愈，**不允许**把自己变成红点：`pipefail` 下
+        # `find`/`ls` 对不存在的目录会返回非 0，最后一行不加 `|| true`
+        # 就会把整个 pages job 弄挂——而它的职责恰恰是「拿不到也别挂」。
         run: |
           set -uo pipefail
           if [ -f qaplat/.cache/qaplat.db ]; then
             echo "度量库就位：$(du -h qaplat/.cache/qaplat.db | cut -f1)"
           else
             echo "::warning::qaplat/.cache/qaplat.db 不在预期位置，尝试从子目录找回"
-            found=$(find qaplat/.cache -name 'qaplat.db' -type f 2>/dev/null | head -1)
-            if [ -n "$found" ]; then
+            found=$(find qaplat/.cache -name 'qaplat.db' -type f 2>/dev/null | head -1) || true
+            if [ -n "${found:-}" ]; then
               cp "$found" qaplat/.cache/qaplat.db && echo "已从 $found 复制回预期路径"
             else
               echo "::warning::artifact 里没有 qaplat.db —— 本轮报表将是空表"
             fi
-            ls -R qaplat/.cache 2>/dev/null | head -20
+            ls -R qaplat/.cache 2>/dev/null | head -20 || true
           fi
 
       - name: 生成 qaplat 报表

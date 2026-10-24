@@ -7,6 +7,9 @@
 > qaplat 平台层生成的 5 页自包含 HTML（最近轮次、接口覆盖矩阵、失败归因、契约漂移），
 > 由 CI 的 `pages` job 在每次 push 到 `main` / 手动触发 / 夜间回归后重新生成并发布。
 
+> 📊 **数字从哪来**：[`docs/evidence/`](docs/evidence/) 固化了本仓库关键指标的来源、
+> 生成时间与复核命令。正文里出现的用例数、分层数字，都能在那里找到对应产物和复现方式。
+
 基于 Python + pytest 的自动化测试框架，覆盖 **接口自动化**、**UI 自动化**、
 **带本地 Mock 后端的业务全链路测试**（状态机、乐观锁、幂等、并发竞态、Decimal 金额精度）
 与 **契约/缺陷探针测试**（自带一个故意带缺陷的登录服务），
@@ -70,6 +73,21 @@ commit 与工作副本路径。保留是为了追溯「当时为什么这么做�
 
 另有 4 篇同性质的交接已在正文别处引用（`wave1-contract-handoff.md`、`wave2-coverage-handoff.md`、
 `wave3-load-handoff.md`、`wave3-zentao-handoff.md`），同一性质，这里不再重复列。
+
+## 30 秒速览
+
+| 问题 | 答案 |
+|---|---|
+| **测什么** | 一个带本地 Mock 后端的物料管理系统（`mock_server/`）：接口契约、UI 流程、业务状态机，以及三者的混合链路 |
+| **有多少用例** | **630** 条（`pytest --collect-only -q`）= 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 230 平台层自测 |
+| **怎么跑** | `pip install -r requirements.txt` → `pytest -m smoke -q`（核心链路）→ `pytest -q`（全量） |
+| **看什么** | [在线报表](https://lefan17.github.io/fullstack-test-framework/)：最近轮次 / 接口覆盖矩阵 / 失败归因 / 契约漂移 |
+| **凭什么信它不是摆设** | 12 条缺陷用 `xfail(strict=True)` 钉住——修好即 XPASS 变红，缺陷单会自己找上门：[`docs/defects.md`](docs/defects.md) |
+| **数字哪来的** | [`docs/evidence/summary.json`](docs/evidence/summary.json)：每条指标都带来源、生成时间与复核命令 |
+| **CI** | 9 个 job；其中 UI 组**不阻塞**（打公网 saucedemo，失败归因不可靠），理由与退出条件见 [`docs/质量门禁策略.md`](docs/质量门禁策略.md) |
+
+> 下面各节与 `docs/` 里是完整论证——设计取舍、踩坑记录、面试追问预案。
+> 这一节只回答三件事：这是什么、怎么跑、凭什么信。
 
 ## 技术栈
 
@@ -446,6 +464,9 @@ pytest --html=report.html --self-contained-html
 
   其余契约缺陷（DEF-01~04，共 11 条）**不修，用 `xfail(strict=True)` 钉住**：
   一旦有人真修好了，用例会从 xfail 变成 XPASS，strict 模式下立刻红——缺陷单会自己找上门。
+
+  > 完整台账（12 条缺陷的编号、级别、钉住/回归用例 nodeid、与禅道字段的映射）见
+  > [`docs/defects.md`](defects.md)。
 
   它扫出的还有一类"文档与实现不一致"：`POST /api/v1/auth/login` 的 description 写着
   "同时接受 json 与 x-www-form-urlencoded"，实际发正确凭据的表单会 422、空表单会 500

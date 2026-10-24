@@ -478,6 +478,18 @@ jobs:
       - name: qaplat 门禁（pr 层，跑 smoke or api or platform 并落库）
         run: python -m qaplat.cli gate --layer pr
 
+      # 度量库必须跨 job 传递：`pages` job 是全新检出，拿不到 `qaplat/.cache/`。
+      # 缺了这一步，报表页的「累计轮次 / 用例级记录 / 各层概况」永远是 0——
+      # 而 `runs.html` / `attribution.html` 正是靠 gate 落库的轮次记录。
+      - name: 上传 qaplat 度量库（供 pages job 生成报表）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qaplat-db
+          path: qaplat/.cache/qaplat.db
+          if-no-files-found: warn
+          retention-days: 14
+
       # ---------------------------------------------------------------------
       # 用例编号 → nodeid 的索引与禅道上报（波 3 · P2-1 新增）
       # ---------------------------------------------------------------------
@@ -952,6 +964,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+
+      # 把 test job 落库的度量数据取回来。没有这一步，报表只有「接口覆盖」
+      # 和「契约漂移」两页有内容，其余全是空表（这正是修复前的线上状态）。
+      # continue-on-error：test job 失败时 artifact 可能不存在，不能让 pages 挂。
+      - name: 下载 qaplat 度量库
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: qaplat-db
+          path: qaplat/.cache/
 
       - name: 生成 qaplat 报表
         run: |

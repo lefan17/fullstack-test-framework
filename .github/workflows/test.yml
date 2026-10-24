@@ -481,6 +481,19 @@ jobs:
       # 度量库必须跨 job 传递：`pages` job 是全新检出，拿不到 `qaplat/.cache/`。
       # 缺了这一步，报表页的「累计轮次 / 用例级记录 / 各层概况」永远是 0——
       # 而 `runs.html` / `attribution.html` 正是靠 gate 落库的轮次记录。
+      - name: 确认度量库已落盘（缺失时打出可搜索的警告）
+        if: always()
+        run: |
+          set -uo pipefail
+          if [ -f qaplat/.cache/qaplat.db ]; then
+            echo "度量库大小：$(du -h qaplat/.cache/qaplat.db | cut -f1)"
+            python -c "import sqlite3; c = sqlite3.connect('qaplat/.cache/qaplat.db'); print('runs =', c.execute('select count(*) from runs').fetchone()[0])" || echo "  runs 表查询失败（库可能是空的或未初始化）"
+            python -c "import sqlite3; c = sqlite3.connect('qaplat/.cache/qaplat.db'); print('case_results =', c.execute('select count(*) from case_results').fetchone()[0])" || echo "  case_results 表查询失败"
+          else
+            echo "::warning::qaplat/.cache/qaplat.db 不存在 —— 本轮报表将是空表"
+            ls -la qaplat/.cache/ 2>/dev/null || echo "  qaplat/.cache/ 也不存在"
+          fi
+
       - name: 上传 qaplat 度量库（供 pages job 生成报表）
         if: always()
         uses: actions/upload-artifact@v4
@@ -974,6 +987,22 @@ jobs:
         with:
           name: qaplat-db
           path: qaplat/.cache/
+
+      - name: 校验度量库就位（拿不到时降级但留下线索）
+        run: |
+          set -uo pipefail
+          if [ -f qaplat/.cache/qaplat.db ]; then
+            echo "度量库就位：$(du -h qaplat/.cache/qaplat.db | cut -f1)"
+          else
+            echo "::warning::qaplat/.cache/qaplat.db 不在预期位置，尝试从子目录找回"
+            found=$(find qaplat/.cache -name 'qaplat.db' -type f 2>/dev/null | head -1)
+            if [ -n "$found" ]; then
+              cp "$found" qaplat/.cache/qaplat.db && echo "已从 $found 复制回预期路径"
+            else
+              echo "::warning::artifact 里没有 qaplat.db —— 本轮报表将是空表"
+            fi
+            ls -R qaplat/.cache 2>/dev/null | head -20
+          fi
 
       - name: 生成 qaplat 报表
         run: |

@@ -964,6 +964,13 @@ jobs:
   pages:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 必须等 `test` 把度量库传上来：下面的步骤要 download `qaplat-db`。
+    # 少了 `needs`，两个 job 完全并行，pages 会在 artifact 还不存在时就去下载，
+    # 报 "Artifact not found for name: qaplat-db"，然后拿空库渲染出一张
+    # 「累计轮次 0」的报表——两端都绿，数据是空的。
+    # `if: always()` 保证即使 test 红了，报表照样发布，让红的那一轮也留痕。
+    needs: [test]
+    if: always()
     continue-on-error: true
     # 仓库默认的 workflow 权限是只读，推 gh-pages 必须显式放开 contents: write。
     permissions:

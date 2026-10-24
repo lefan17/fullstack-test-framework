@@ -512,6 +512,8 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 
 ### 缺陷清单与用例的分工
 
+![缺陷台账：12 条缺陷的严重级、钉住用例与禅道字段映射（docs/defects.md 渲染）](docs/images/defects-ledger.jpg)
+
 被测服务 `login_app/` 是**故意带 6 个缺陷**的，而用例**断言的是"当前行为就是这样"**
 （`assert r.status_code == 200`，注释标 `FIND-01`），**不是**"期望它被修好"
 （`assert r.status_code == 400`）。理由：

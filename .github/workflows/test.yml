@@ -500,6 +500,11 @@ jobs:
         with:
           name: qaplat-db
           path: qaplat/.cache/qaplat.db
+          # ⚠️ v4 默认 **跳过隐藏文件**（`include-hidden-files` 缺省 false），
+          # 而 `qaplat/.cache/` 以点开头正是隐藏目录。少了这一行，artifact 会
+          # 上传成功、大小却是 0 字节，pages 那边解出来什么都没有 ——
+          # 报表于是永远显示「累计轮次 0」，而两个 job 都是绿的在骗人。
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 

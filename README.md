@@ -60,6 +60,10 @@
 - [`docs/test_report_template.md`](docs/test_report_template.md)：测试报告模板。跑完只是跑完，
   能说清结果才是交付；这份给的是结构。
 
+**跨平台** —— [`Linux环境排查手册.md`](docs/Linux环境排查手册.md)：把三个仓库搬进 Linux 容器跑一遍时踩到的六个坑
+（其中一个是只在 Linux 暴露的真 bug：[issue #24](https://github.com/lefan17/fullstack-test-framework/issues/24)），
+外加「同一份代码在 Windows 与 Linux 上数字方向相反」的实测对照。
+
 **历史交接（`wave\*-handoff`）** —— 分批交付时写给整合者的交接记录，里面写死了当时的基线
 commit 与工作副本路径。保留是为了追溯「当时为什么这么做」，**不是当前的使用文档**，
 照着它敲命令会撞上已经不存在的路径：
@@ -85,6 +89,7 @@ commit 与工作副本路径。保留是为了追溯「当时为什么这么做�
 | **凭什么信它不是摆设** | 12 条缺陷用 `xfail(strict=True)` 钉住——修好即 XPASS 变红，缺陷单会自己找上门：[`docs/defects.md`](docs/defects.md) |
 | **数字哪来的** | [`docs/evidence/summary.json`](docs/evidence/summary.json)：每条指标都带来源、生成时间与复核命令 |
 | **CI** | 9 个 job；其中 UI 组**不阻塞**（打公网 saucedemo，失败归因不可靠），理由与退出条件见 [`docs/质量门禁策略.md`](docs/质量门禁策略.md) |
+| **换个系统还跑得动吗** | 能：容器里 `pytest -m "not ui"` → **591 passed / 11 xfailed**，与 Windows 逐条一致。过程中修掉一条只在 Linux 暴露的解释器误判（[`docs/Linux环境排查手册.md`](docs/Linux环境排查手册.md)） |
 
 > 下面各节与 `docs/` 里是完整论证——设计取舍、踩坑记录、面试追问预案。
 > 这一节只回答三件事：这是什么、怎么跑、凭什么信。

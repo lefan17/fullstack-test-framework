@@ -1,15 +1,15 @@
 {
   "schema": "evidence-summary@1",
   "repo": "fullstack-test-framework",
-  "collected_at": "2026-10-24T18:48:12+08:00",
+  "collected_at": "2026-10-25T14:46:28+08:00",
   "source": "reports/case-index.json（qaplat 用例索引，由 CI/本地 `qaplat registry build` 生成）",
-  "produced_at": "2026-10-22T09:18:33+00:00",
+  "produced_at": "2026-10-25T06:46:07+00:00",
   "reproduce": "pytest --collect-only -q  &&  python -m qaplat.cli registry build",
   "metrics": {
-    "nodeids_collected": 630,
-    "test_functions": 391,
+    "nodeids_collected": 636,
+    "test_functions": 397,
     "nodeids_with_case_id": 27,
-    "nodeids_without_case_id": 603,
+    "nodeids_without_case_id": 609,
     "distinct_case_ids": 30,
     "layers": {
       "api": 49,
@@ -17,12 +17,12 @@
       "mes": 64,
       "login": 29,
       "contract": 224,
-      "platform": 230
+      "platform": 236
     }
   },
   "notes": [
-    "layers 的六个数字来自 README 的分层说明，六组互不重叠、可相加为 630。",
-    "nodeids_with_case_id=27 / 630 是真实情况：绝大部分用例没有稳定编号，所以「按用例编号追溯」这条能力目前只覆盖 4% 的用例，不要对外说成全量可追溯。",
+    "layers 的六个数字来自 README 的分层说明，六组互不重叠、可相加为 636。",
+    "nodeids_with_case_id=27 / 636 是真实情况：绝大部分用例没有稳定编号，所以「按用例编号追溯」这条能力目前只覆盖 4% 的用例，不要对外说成全量可追溯。",
     "qaplat 度量库（qaplat/.cache/qaplat.db）不入库、只在 CI 内通过 artifact 传递，因此本文件不含「累计轮次/用例级记录」——那两项以在线报表为准。"
   ]
 }

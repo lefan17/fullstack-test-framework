@@ -16,7 +16,7 @@
 
 ```bash
 pip install -r requirements.txt
-pytest --collect-only -q          # 用例数应为 630
+pytest --collect-only -q          # 用例数应为 636
 python -m qaplat.cli registry build
 ```
 

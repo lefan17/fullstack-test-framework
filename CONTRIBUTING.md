@@ -20,7 +20,7 @@ pip install -r requirements.txt
 playwright install chromium
 
 # 4. 跑一遍确认环境是好的
-pytest -m "not ui" -q          # 期望 585 passed, 11 xfailed（`-m "not ui"` 收集 596 条，全仓 630 条）
+pytest -m "not ui" -q          # 期望 591 passed, 11 xfailed（`-m "not ui"` 收集 602 条，全仓 636 条）
 ```
 
 `setup.ps1` 把这四步包成了一个脚本，新机器上可以直接跑它。
@@ -87,7 +87,7 @@ $env:TEST_ENV = "prod"; pytest     # → data/config.prod.yaml
 加载器是 `common/config.py` 的 `get_config()`。**改动它时有一条硬约束**：
 `TEST_ENV` 未设置时的返回值必须与旧实现（`common/yaml_util.get_config()`
 直接读 `config.yaml`）逐字节一致。这条已经有回归保护——
-CI 里跑的就是默认档的 596 条用例（`-m "not ui"` 的收集数，全仓共 630 条）。
+CI 里跑的就是默认档的 602 条用例（`-m "not ui"` 的收集数，全仓共 636 条）。
 
 ### 6. 覆盖率门禁有两道：仓库级 54% 与 **per-file 55%**，别只盯着前者
 

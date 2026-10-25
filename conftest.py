@@ -69,16 +69,38 @@ def post_api(api_base_url) -> PostApi:
 
 # ---------- 报告相关钩子：把被测环境地址写进 Allure 报告的环境信息页 ----------
 def pytest_configure(config):
+    """把被测环境信息写进 Allure 的 environment.properties。
+
+    **为什么是写文件而不是塞属性**：allure-pytest 2.13.5 只注册了
+    `pytest_addoption / pytest_addhooks / pytest_configure / pytest_collection_modifyitems`
+    四个钩子（`allure_pytest/plugin.py`），它既不提供 `config.allure_environment`，
+    也没有任何写 environment 的代码。经 grep 确认该属性在整棵 site-packages 里零命中。
+    所以旧写法 `if hasattr(config, "allure_environment")` 恒为 False，
+    这段环境信息**从来没有进过报告**。
+
+    Allure 真正读取环境信息的方式是：报告目录下存在 `environment.properties`
+    （`key=value` 每行一条）。所以这里直接往 `--alluredir` 写文件。
+    """
     try:
+        # `--alluredir` 的 dest 是 `allure_report_dir`（见 allure_pytest/plugin.py 的
+        # pytest_addoption），没有这个参数时值为 None，此时什么都不做。
+        report_dir = getattr(config.option, "allure_report_dir", None)
+        if not report_dir:
+            return
+
         cfg = get_config()
         env_info = {
             "API地址": cfg["base"]["api"],
             "UI地址": cfg["base"]["ui"],
             "Python版本": sys.version.split()[0],
         }
-        # 只在带 --alluredir 参数运行时才写；普通 pytest 运行没有这个属性
-        if hasattr(config, "allure_environment"):
-            config.allure_environment.extend(f"{k}={v}" for k, v in env_info.items())
+        target = Path(report_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        # 用 utf-8 显式编码：Windows 默认 GBK 会把中文地址写成乱码。
+        target.joinpath("environment.properties").write_text(
+            "".join(f"{k}={v}\n" for k, v in env_info.items()),
+            encoding="utf-8",
+        )
     except Exception:  # noqa: BLE001 - 报告信息绝不能影响测试本身
         pass
 

@@ -267,8 +267,16 @@ def baseline_row_counts(conn: sqlite3.Connection) -> dict[str, int]:
         tuple(BASELINE_MATERIALS),
     ).fetchone()[0]
     # 库存要用 (物料, 仓库) 这两个列做匹配：同一个物料编码在另一个仓库的行不算基线。
-    pair_clause = " OR ".join("(material_code = ? AND warehouse = ?)" for _ in BASELINE_STOCK)
-    pair_params = tuple(value for pair in sorted(BASELINE_STOCK) for value in pair)
+    #
+    # 这里必须**只展开一次** `sorted(BASELINE_STOCK)`：谓词与参数是同一个数组的两个投影。
+    # 曾经的写法是谓词按 frozenset 的迭代序生成、参数按 `sorted()` 展开，
+    # 两者顺序不同（实测第 3、5 项互换），于是 (MAT-SC-003, WH-01) 这个谓词
+    # 绑到了 (MAT-ENC-005, WH-02) 这一对参数上。因为整体是 OR 联合、
+    # 每个谓词都是一对完整的等值对，匹配集合恰好还是对的 —— 但这种"靠 OR 侥幸正确"
+    # 的写法一旦有人把 OR 改成 AND、或者给某个谓词加第三列，就会静默算错。
+    baseline_pairs = sorted(BASELINE_STOCK)
+    pair_clause = " OR ".join("(material_code = ? AND warehouse = ?)" for _ in baseline_pairs)
+    pair_params = tuple(value for pair in baseline_pairs for value in pair)
     stock = conn.execute(f"SELECT COUNT(*) FROM stock WHERE {pair_clause}", pair_params).fetchone()[0]
     return {"users": int(users), "materials": int(materials), "stock": int(stock)}
 

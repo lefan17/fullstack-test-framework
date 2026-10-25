@@ -445,7 +445,35 @@ class TestLedgerConsistency:
 # 写成数据表而不是一堆 if：权限矩阵本身就是契约，逐条覆盖一遍最省事，
 # 而且以后加接口时，漏掉的组合会以"表里没有"的形式直观暴露出来。
 PERMISSION_MATRIX: list[tuple[str, str, str, tuple[str, ...], dict]] = [
-    ("新建物料", "POST", "/materials", ("ADMIN", "PLANNER"), {"material_code": "MAT-ACL", "name": "权限用例"}),
+    (
+        "新建物料",
+        "POST",
+        "/materials",
+        ("ADMIN", "PLANNER"),
+        # 5 个必填字段一个都不能少（material_code / name / category / unit / unit_price）。
+        #
+        # 为什么缺字段会让这条用例漏回收：见下面第 523 行的登记条件
+        # `resp.status_code == 201`。请求体不全时，**有权限**的 ADMIN 拿到的是
+        # 422 REQUEST_VALIDATION_ERROR（实测：缺 category/unit/unit_price 时 422，
+        # 报错里逐字段列出 missing），不是 201 —— 于是 register_material() 那一支
+        # 永远不执行，建出来的 MAT-ACL 没有任何人回收。
+        #
+        # 注意 403 与 422 的先后顺序（实测，容易搞反）：权限检查是 FastAPI 的
+        # Depends，**排在请求体校验之前**。所以无权限 + 缺字段拿到的是 403，
+        # 有权限 + 缺字段才是 422。这也正是 mock_server/deps.py 里
+        # require_permission 的 docstring 所解释的设计意图：
+        # 不能让越权者靠 422/403 的差异去探测接口的必填字段。
+        #
+        # 实测补齐后的两种结果：ADMIN 拿 201（登记回收），PLANNER 因编码重复拿 400
+        # （不进回收列表）。两者都不是 403，双向断言照样成立。
+        {
+            "material_code": "MAT-ACL",
+            "name": "权限用例",
+            "category": "RAW",
+            "unit": "PCS",
+            "unit_price": "1.00",
+        },
+    ),
     ("删除物料", "DELETE", "/materials/MAT-CU-001", ("ADMIN",), None),
     ("审核工单", "POST", "/work-orders/{order_no}/approve", ("ADMIN", "PLANNER"), {"version": 1}),
     ("发货", "POST", "/work-orders/{order_no}/ship", ("ADMIN",), {"version": 1}),

@@ -42,12 +42,20 @@
 - [持续集成](#持续集成)
 - [常见问题](#常见问题)
 
+> 🚪 **第一次来，建议先读 [`docs/初学者完全入门.md`](docs/初学者完全入门.md)**
+> —— 它不讲「怎么用」，而是讲「这些文件是怎么连起来的」，并把一条用例从收集到清理的
+> 全过程拆给你看。本 README 是**地图**，那篇是**走路的过程**。
+
 ### 深入文档
 
 `docs/` 下的 Markdown 分两类，读之前先分清，能省不少时间。
 
 **活文档** —— 描述当前代码怎么用，随代码一起更新：
 
+- [`docs/初学者完全入门.md`](docs/初学者完全入门.md)：**给零基础的人看的**。
+  不教怎么用，而是讲**这些文件彼此之间是怎么连起来的** —— 一条用例从被 pytest 发现、
+  发 HTTP 请求、验数据库、到清理数据，中间经过了哪些文件、哪些函数、为什么非要拆成这么多层。
+  含「改坏它，看谁变红」的动手实验（每个实验都标了实测结果）与一份代码阅读顺序。
 - [`docs/platform-usage.md`](docs/platform-usage.md)：qaplat 平台层的**唯一使用手册**。
   `gate --layer smoke|pr|nightly|release` 四层分别什么时候跑、度量库里存了什么、
   包名为什么叫 `qaplat` 而不是 `platform`。本 README 只说平台层是什么，这份说怎么用。
@@ -86,7 +94,7 @@ commit 与工作副本路径。保留是为了追溯「当时为什么这么做�
 | **有多少用例** | **636** 条（`pytest --collect-only -q`）= 49 接口 + 34 UI + 64 MES + 29 登录 + 224 契约 + 236 平台层自测 |
 | **怎么跑** | `pip install -r requirements.txt` → `pytest -m smoke -q`（核心链路）→ `pytest -q`（全量） |
 | **看什么** | [在线报表](https://lefan17.github.io/fullstack-test-framework/)：最近轮次 / 接口覆盖矩阵 / 失败归因 / 契约漂移 |
-| **凭什么信它不是摆设** | 12 条缺陷用 `xfail(strict=True)` 钉住——修好即 XPASS 变红，缺陷单会自己找上门：[`docs/defects.md`](docs/defects.md) |
+| **凭什么信它不是摆设** | 契约缺陷用 `xfail(strict=True)` 钉住（DEF-01~04 共 **11** 个 nodeid）——修好即 XPASS 变红，缺陷单会自己找上门；登录缺陷反过来，用**绿用例断言「当前确实是这个行为」**：[`docs/defects.md`](docs/defects.md) |
 | **数字哪来的** | [`docs/evidence/summary.json`](docs/evidence/summary.json)：每条指标都带来源、生成时间与复核命令 |
 | **CI** | 9 个 job；其中 UI 组**不阻塞**（打公网 saucedemo，失败归因不可靠），理由与退出条件见 [`docs/质量门禁策略.md`](docs/质量门禁策略.md) |
 | **换个系统还跑得动吗** | 能：容器里 `pytest -m "not ui"` → **591 passed / 11 xfailed**，与 Windows 逐条一致。过程中修掉一条只在 Linux 暴露的解释器误判（[`docs/Linux环境排查手册.md`](docs/Linux环境排查手册.md)） |
@@ -615,15 +623,16 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 
 ### 提交历史里的 `dispatcher` / `integ` / `agent` 是什么
 
-点开提交历史会看到 173 条提交里有 100 条的作者不是 `Lefan Ma`：
+点开提交历史会看到 195 条提交里有 116 条的作者不是 `Lefan Ma`：
 
 | 作者 | 邮箱 | 条数 | 是什么 |
 |---|---|---|---|
-| `Lefan Ma` | `128964809+lefan17@users.noreply.github.com` | 67 | GitHub 账号，人工 review 与亲自改的那部分 |
+| `Lefan Ma` | `128964809+lefan17@users.noreply.github.com` | 79 | GitHub 账号，人工 review 与亲自改的那部分 |
 | `dispatcher` | `dispatcher@local` | 76 | 本机未配置 git user 时，AI 编码代理会话提交的 |
 | `integ` | `i@x` | 17 | 集成／收口会话（跨仓库搬运、数字核对、口径统一） |
+| `dependabot[bot]` | — | 8 | 依赖升级 |
+| `lefan17` | `lefan17@users.noreply.github.com` | 8 | 同一个人的另一个 git 身份（仓库搬家后统一成 `Lefan Ma`） |
 | `agent` | `agent@local` | 7 | 早期 Agent 会话（波 1 的认证改造与 schemathesis 契约套件） |
-| `dependabot[bot]` | — | 6 | 依赖升级 |
 
 **它们不是外部贡献者，是这个仓库的开发过程本身。** 逐条核对过：`dispatcher` 那 76 条是
 `fix(qaplat):` / `ci:` / `test:` 一类的小步修复，`integ` 那 17 条是 `docs:` 的数字重算与口径统一，

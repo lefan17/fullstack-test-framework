@@ -20,11 +20,12 @@ import os
 import signal
 import socket
 import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from common.launch import launcher_python
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_PYTHON = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
@@ -68,7 +69,7 @@ class LoginServer:
 
     # ---------- 生命周期 ----------
     def start(self, timeout: float = 30.0) -> "LoginServer":
-        python = os.getenv("LOGIN_PYTHON") or (str(DEFAULT_PYTHON) if DEFAULT_PYTHON.exists() else sys.executable)
+        python = launcher_python(DEFAULT_PYTHON, "LOGIN_PYTHON")
         cmd = [
             python,
             str(SERVICE_LAUNCHER),

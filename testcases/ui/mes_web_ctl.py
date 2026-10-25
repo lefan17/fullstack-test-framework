@@ -25,7 +25,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -35,6 +34,8 @@ from pathlib import Path
 # 把 `MES_DIR` 插进了 `sys.path`，所以 `mock_server_ctl` 是**顶层模块**，裸名可行
 # （契约 §6.2 实测过）。`free_port` 直接重新导出，不重复实现。
 from mock_server_ctl import free_port as free_port
+
+from common.launch import launcher_python
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_PYTHON = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
@@ -75,7 +76,7 @@ class MesWebServer:
 
     # ---------- 生命周期 ----------
     def start(self, timeout: float = 30.0) -> "MesWebServer":
-        python = os.getenv("MES_WEB_PYTHON") or (str(DEFAULT_PYTHON) if DEFAULT_PYTHON.exists() else sys.executable)
+        python = launcher_python(DEFAULT_PYTHON, "MES_WEB_PYTHON")
         cmd = [
             python,
             "-m",

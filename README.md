@@ -40,6 +40,7 @@
 - [容量压测（perf/）](#容量压测perf)
 - [流量回放（批次 2，独立子项目）](#流量回放批次-2独立子项目)
 - [持续集成](#持续集成)
+- [智能体协作（这个仓库是怎么用 AI 编码代理改出来的）](#智能体协作这个仓库是怎么用-ai-编码代理改出来的)
 - [常见问题](#常见问题)
 
 > 🚪 **第一次来，建议先读 [`docs/初学者完全入门.md`](docs/初学者完全入门.md)**
@@ -623,11 +624,11 @@ UI 与接口操作不到同一份数据、闭环是断的，所以这条打的�
 
 ### 提交历史里的 `dispatcher` / `integ` / `agent` 是什么
 
-点开提交历史会看到 195 条提交里有 116 条的作者不是 `Lefan Ma`：
+点开提交历史会看到 200 条提交里有 116 条的作者不是 `Lefan Ma`：
 
 | 作者 | 邮箱 | 条数 | 是什么 |
 |---|---|---|---|
-| `Lefan Ma` | `128964809+lefan17@users.noreply.github.com` | 79 | GitHub 账号，人工 review 与亲自改的那部分 |
+| `Lefan Ma` | `128964809+lefan17@users.noreply.github.com` | 84 | GitHub 账号，人工 review 与亲自改的那部分 |
 | `dispatcher` | `dispatcher@local` | 76 | 本机未配置 git user 时，AI 编码代理会话提交的 |
 | `integ` | `i@x` | 17 | 集成／收口会话（跨仓库搬运、数字核对、口径统一） |
 | `dependabot[bot]` | — | 8 | 依赖升级 |
@@ -1240,6 +1241,77 @@ allure generate allure-results -o allure-report
 `Unknown Syntax Error: Command not found`，且 3.x 的 `generate` **默认不清理输出目录**。
 「先删目录」是 2.x / 3.x 都合法的写法，效果与 `--clean` 等价，
 这样本地和 CI 可以用同一条命令，不会出现单边失败。
+
+## 智能体协作（这个仓库是怎么用 AI 编码代理改出来的）
+
+> 这一节不是"我用了 AI"的声明，是**可复核的证据链**。四条都给了复现命令，
+> 每一条都能当场跑出数字；跑不出来或数字对不上，说明这一节写错了。
+
+### 1. 过程留痕：提交历史本身就是记录
+
+```bash
+git log --format='%an' | sort | uniq -c | sort -rn
+#  84 Lefan Ma  76 dispatcher  17 integ  8 lefan17  8 dependabot[bot]  7 agent
+```
+
+200 条提交里 **100 条来自 AI 编码代理会话**（`dispatcher` 76 + `integ` 17 + `agent` 7），
+集中产出于 2026-10-14 ~ 10-18 五天（19 / 22 / 25 / 28 / 6 条）。
+两个身份的语义写在[上面那一节](#提交历史里的-dispatcher--integ--agent-是什么)：`dispatcher` 是小步修复与
+`docs:`/`ci:` 改动，`integ` 是跨仓库搬运与口径统一。
+
+**这不是需要辩解的事，是可以被追问的事。** 被问「AI 写的代码你怎么敢合」时，
+答案不在这段历史里，在本仓的门禁（`qaplat/` 四层 + `docs/质量门禁策略.md`
+那份被 `check_gate_policy.py` 机器校验的文档）和下一节的约束上。
+
+### 2. 约束留痕：每个仓库一份 `AGENTS.md`
+
+AI 编码代理每次会话都是**冷启动**，它不知道「不要设 `PYTHONPATH=work\pylibs`」
+「`traffic-replay` 必须留在 `ruff.toml` 的 `extend-exclude`」「`$TMP` 必须可写」
+这些用事故换来的规矩。把规矩写进仓库、成为随代码分发的文件，是让代理**第一次就做对**
+的唯一办法：
+
+| 仓库 | 文件 | 内容性质 |
+|---|---|---|
+| `fullstack-test-framework`（本仓） | [`AGENTS.md`](AGENTS.md) | 怎么跑 / 7 条环境硬约束 / 冻结文件 / 已知坑 |
+| `agent-test-hub` | `AGENTS.md` | `-o addopts=` 不能省、`--cov` 口径变了 per-file 门禁要重核、mypy 缓存要可写 |
+| `perf-baseline-quality-gate` | `AGENTS.md` | `run.ps1` 必须带 BOM、`PYTHONIOENCODING=utf-8`、`fail_under` 是棘轮不是目标 |
+| `api-regression-selector` | `AGENTS.md` | 上游只读、冻结文件、不加依赖、`TMP` 必须可写 |
+
+**这些文件里没有一句是"请写高质量代码"这种废话**，全是可判定的具体约束。
+
+### 3. 反向证据：让独立代理去**推翻**自己的结论
+
+这是这套协作里唯一真正值钱的环节。`api-regression-selector` 的
+[`docs/tia-review.md`](https://github.com/lefan17/api-regression-selector/blob/main/docs/tia-review.md)
+记录了**三轮 fresh subagent 独立核验**：代理不共享上游上下文、只拿到产物与判据，
+任务是找错而不是确认。
+
+第三轮推翻了当时对外最好看的那个数字 ——「改 `mock_server/routers.py` 一行 →
+只选中 1 条用例、2.21s、89 倍提速」。核验发现它测的是**失真的索引**：
+`--cov-context=test` 的 context 在子进程 spawn 时被 `COV_CORE_CONTEXT` 固定，
+v2 会静默漏掉约 92% 的用例，正确行为是选中全量 712 条。**数字真、结论假。**
+
+修法（`1f2f4ff`）是把 `mock_server/`、`login_app/`、`mes_web/`、`ui/` 加回
+`ALWAYS_FULL_PREFIXES`；那份文档自己留了一句：「数字真、结论假比直接写错更危险」。
+
+同一份文档第 2 节还有一次实测：故意改坏 `qaplat/registry.py:70` 后，
+7 条真红用例中有 3 条不在选中集 —— 漏检 **3/7 ≈ 43%**，如实写在文档里。
+
+### 4. 边界留痕：代理只做决策，判定交给确定性工具
+
+`agent-test-hub` 的设计原则是**执行与判定分离**：Agent 负责规划与归因，
+真正跑的是 pytest / headless Chromium / 自研 BM25，LLM 输出不直接当判定结果；
+LLM 不可用时整体降级为 28 条规则引擎，而不是"跳过失败"。
+
+诚实的数字同样记着：9 个缺陷面里，只有 1 个（`/api/flaky`）是人类零覆盖、
+由 Agent 独立发现 —— **1/9 ≈ 11%**。这个数字被明确列进「不能说」清单：
+**不能把 11% 讲成"Agent 能独立找 bug"**。
+
+---
+
+**一句话总结这套协作**：代理写得多不算本事，**能被独立核验、能被推翻、能把推翻的过程留下来**
+才算。这个仓的 200 条提交、四份 `AGENTS.md`、一份自我推翻的 review 记录，
+加起来才是可以拿去被追问的证据。
 
 ## 常见问题
 

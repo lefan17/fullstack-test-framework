@@ -330,32 +330,38 @@ jobs:
         run: |
           pytest -m api -n 4 --dist loadfile \
             --cov=. --cov-report=term --cov-report=json:.coverage.json --cov-report= \
-            --cov-fail-under=54 \
+            --cov-fail-under=58 \
             --alluredir=allure-results
         env:
           # CI 网络比本地慢，阈值放宽，避免误报
           # （实测 GitHub runner 连 jsonplaceholder 常在 2-4 秒波动）
           MAX_RESPONSE_MS: "8000"
 
-      # 覆盖率门禁的数字来源：本机在这条命令上**串行实测两次** →
-      # `TOTAL 8597 / 未覆盖 3847 / 55%`（55.25%）。这一栏有运行间摆动
-      # （同一份代码同机也会变，最多见过 6 条），所以判断只看百分比、不抠那几个数值。
-      # 门禁取 54，留约 2.1pp 余量。
+      # 覆盖率门禁的数字来源（2026-11-02 重测）：分母 3880 / 未覆盖 1572 /
+      # **59%（59.48%）**。这一栏有运行间摆动（同一份代码同机也会变，最多见过 6 条），
+      # 所以判断只看百分比、不抠那几个数值。门禁取 58，留约 1.5pp 余量。
+      #
+      # ⚠️ 2026-11-02 分母从 8647 变到 3880，不是代码少了，是 **`.coveragerc` 把
+      # `testcases/` 排除出了分母**（4767 条测试代码，占旧分母的 55.1%）。原因：
+      # 测试代码的覆盖率是循环定义——跑测试当然会执行测试文件本身。它留在分母里
+      # 的后果是「新增一个测试文件」这个纯增测动作会把全局覆盖率往**下**拽：
+      # 兄弟仓 api-regression-selector 就是这样被压红的（新增的
+      # `testcases/platform/test_tia.py` 452 语句、`-m api` 跑不到、自身 18%，
+      # 单文件把 TOTAL 从 55.4% 压到 51.78%，跌破 54% 门槛）。本仓只是还没撞上
+      # 大测试文件，隐患相同。逐文件门禁那边早就把 `testcases/` 排除了，两道门
+      # 的口径这才对上。详见 `.coveragerc` 里 `omit` 上方的长注释。
+      #
+      # 门槛同轮从 54 抬到 58（棘轮：门槛 = 当前实测 - 约 1.5pp，修完就抬，
+      # 每轮只抬一次）。不抬的话 59.48% 配 54 会留下 5.5pp 的空档，等于把门禁
+      # 悄悄放松了 —— 那和「为了绿而调低阈值」是同一件事，只是方向相反。
       #
       # ⚠️ 阈值是量出来的，不是拍的，也不能沿用历史推算值：
       #   - 本文件早前记的 78.87% / 88.90% 是更早树状态的实测，早就作废。
       #   - 36c1cc5 那棵树上是 61.27%（分母 7095 / 未覆盖 2748）。
-      #   - 现在同一命令是 55.25%（分母 8597 / 未覆盖 3847）。`--cov=.` 把仓库
-      #     **全文**算进分母，而 `-m api` 只跑接口那 132 条，摸不到新增文件。
-      #   - 上一轮那次测量时，分母 7095 -> 8064 涨了 969 条（两个数都是量出来的）。能逐文件对上的是
-      #     36c1cc5..HEAD 新增的 5 个 .py 共 631 条（`coverage.parser.PythonParser` 量出）
-      #     + `tools/install_chromium.py` 的 +5；**剩下 333 条我没能逐文件对上**，不编造原因。
-      #   - 那 626 条里，539 条其实是**测试文件自己**的语句（下同，仍指上一轮那棵树）——`--cov=.` 把 `testcases/`
-      #     也算进分母：`test_scripts_check_deps_sync.py` +71、
-      #     `test_scripts_install_chromium.py` +143、`test_scripts_mes_data_ttl.py` +171、
-      #     `test_scripts_report_to_zentao.py` +154。这是分母上涨的主因。
-      #   - 结论不变：拿 61.27% 时代的口径写 58 会让这一步当场红。
-      #     按当前实测 55.48% 留约 1.5pp 余量，取 54。
+      #   - 排除 testcases/ 之前同一命令是 55.20%（分母 8647 / 未覆盖 3874），
+      #     其中 2465 条已覆盖语句与 2302 条未覆盖语句都在 `testcases/` 里。
+      #   - 结论不变：拿 61.27% 时代的口径写 60 会让这一步当场红。
+      #     按当前实测 59.48% 留约 1.5pp 余量，取 58。
       #
       # 为什么不贴着实测值设：这个数字里有相当一部分来自公网接口用例本身，
       # 在 runner 上会抖动；门禁的意义是"拦住覆盖率**退化**"，不是"卡住当前值"。
@@ -385,8 +391,8 @@ jobs:
 
       # per-file 覆盖率门禁：拦住「单个模块整体失守」。
       #
-      # 为什么需要独立一步：上面那个 `--cov-fail-under=54` 是**仓库级**的，
-      # 按语句数加权平均。一个模块整体掉光，只要总量还高于 54，CI 就是绿的
+      # 为什么需要独立一步：上面那个 `--cov-fail-under=58` 是**仓库级**的，
+      # 按语句数加权平均。一个模块整体掉光，只要总量还高于 58，CI 就是绿的
       # —— 这正是本仓库真实发生过的形状：`qaplat/cli.py`（253 语句）在
       # `-m api` 口径下只有 13.8%，而全局门禁对此一无所知。
       #
@@ -641,7 +647,7 @@ jobs:
             echo ""
             echo "| 项目 | 结果 |"
             echo "|---|---|"
-            echo "| 接口用例 | \`pytest -m api\`（-n 4 --dist loadfile，含覆盖率门禁 54%） |"
+            echo "| 接口用例 | \`pytest -m api\`（-n 4 --dist loadfile，含覆盖率门禁 58%） |"
             echo "| 契约用例 | \`pytest -m contract\`（含漂移检测 \`export_openapi.py --check\`，样例数钉死 8） |"
             echo "| UI 用例 | \`pytest -m ui\`（失败不阻断） |"
             echo "| 业务全链路 | \`pytest -m mes\`（本地 Mock 后端，刻意串行） |"
@@ -671,7 +677,7 @@ jobs:
             python -m coverage report --skip-covered --skip-empty >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "> 门禁值 54%（本组实测 55.48%，未覆盖 3779 条语句）。" >> "$GITHUB_STEP_SUMMARY"
+            echo "> 门禁值 58%（本组实测 59.48%，未覆盖 1572 条语句）。" >> "$GITHUB_STEP_SUMMARY"
             echo "> \`mock_server/*\` 的数字**已经包含**由 fixture 拉起的真服务子进程（波 2 · P1-3）。" >> "$GITHUB_STEP_SUMMARY"
             echo "> 服务经 scripts/service_launcher.py 启动并优雅退出，coverage 分片由 pytest-cov 自动 combine。" >> "$GITHUB_STEP_SUMMARY"
           fi

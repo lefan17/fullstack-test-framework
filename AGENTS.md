@@ -105,7 +105,7 @@ note: please use --show-traceback to print a traceback when reporting a bug
 
 ### 7. 覆盖率门禁有**两道**，别只盯仓库级
 
-- **仓库级**：`--cov-fail-under=54`（同一命令实测 55.25%，余量约 1.3–1.9pp，**会红**）
+- **仓库级**：`--cov-fail-under=58`（同一命令实测 59.48%，余量约 1.5pp；分母已排除 `testcases/`）
 - **单文件级**：`scripts/check_coverage.py`，`[tool.coverage.perfile] fail_under=55`、
   `min_statements=20`，CI 里 `if: always()` 且**无** `continue-on-error`
 

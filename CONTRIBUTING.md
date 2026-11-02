@@ -89,12 +89,12 @@ $env:TEST_ENV = "prod"; pytest     # → data/config.prod.yaml
 直接读 `config.yaml`）逐字节一致。这条已经有回归保护——
 CI 里跑的就是默认档的 602 条用例（`-m "not ui"` 的收集数，全仓共 636 条）。
 
-### 6. 覆盖率门禁有两道：仓库级 54% 与 **per-file 55%**，别只盯着前者
+### 6. 覆盖率门禁有两道：仓库级 58% 与 **per-file 55%**，别只盯着前者
 
 ```powershell
 # 第一道（仓库级，CI 里由 --cov-fail-under 判）
 pytest -m api -n 4 --dist loadfile --cov=. --cov-report=term `
-  --cov-report=json:.coverage.json --cov-fail-under=54
+  --cov-report=json:.coverage.json --cov-fail-under=58
 
 # 第二道（per-file，读上面那份 JSON，不重跑测试）
 python scripts/check_coverage.py --report .coverage.json
